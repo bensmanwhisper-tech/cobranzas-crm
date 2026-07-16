@@ -45,7 +45,7 @@ export const endpoints = {
 
   send: (payload) => api.post(`/send`, payload).then((r) => r.data),
 
-  reportsSummary: () => api.get(`/reports/summary`).then((r) => r.data),
+  reportsSummary: (country) => api.get(`/reports/summary`, { params: country ? { country } : {} }).then((r) => r.data),
 
   registerScript: (payload) => api.post(`/scripts`, payload).then((r) => r.data),
   listScripts: (country) => api.get(`/scripts`, { params: country ? { country } : {} }).then((r) => r.data),

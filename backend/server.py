@@ -513,10 +513,14 @@ async def seed_demo(country: Optional[str] = None):
 
 # ---------- Templates ----------
 DEFAULT_TEMPLATES = {
-    "default": "Hola {nombre}, le recordamos que tiene un saldo pendiente de ${monto} con {app_cliente}. Presenta {dias_mora} días de mora. Fecha de vencimiento: {vencimiento}. Gracias.",
-    "friendly": "Hola {nombre} 👋 Solo un recordatorio amistoso: tienes un saldo de ${monto} con {app_cliente}. Llevas {dias_mora} días. ¡Regularicemos hoy y cualquier duda escríbenos!",
-    "formal": "Estimado(a) {nombre}: Le informamos que su cuenta con {app_cliente} presenta un saldo pendiente de ${monto} y {dias_mora} días de mora. Favor de regularizar.",
-    "urgent": "⚠️ URGENTE: {nombre}, su cuenta con {app_cliente} lleva {dias_mora} días de mora. Saldo: ${monto}. Contáctenos de inmediato para evitar cargos adicionales.",
+    "nivel_1": "🟢 Hola {nombre} 👋 Te escribimos con un recordatorio amistoso: tienes un saldo pendiente de {monto} con {app_cliente} y llevas {dias_mora} días. Regularicemos hoy y aprovecha nuestros descuentos y facilidades. ¡Estamos para ayudarte!",
+    "nivel_2": "🟡 {nombre}, tu cuenta con {app_cliente} lleva {dias_mora} días de mora y el saldo pendiente es {monto}. Necesitamos regularizar tu situación HOY. Responde este mensaje para agendar tu acuerdo de pago.",
+    "nivel_3": "🟠 ATENCIÓN {nombre}: Este es tu aviso FINAL. Tu cuenta con {app_cliente} presenta {dias_mora} días de mora y el saldo es {monto}. Es la última oportunidad antes de iniciar acciones administrativas. Contáctanos de inmediato.",
+    "nivel_4": "🔴 ADVERTENCIA LEGAL. {nombre}, tu cuenta con {app_cliente} lleva {dias_mora} días de mora con saldo {monto}. Al no regularizar tu deuda, tus datos serán reportados a buró de crédito y se iniciará el proceso legal correspondiente. Regulariza ya.",
+    "default": "🟢 Hola {nombre}, le recordamos que tiene un saldo pendiente de {monto} con {app_cliente}. Lleva {dias_mora} días de mora. Gracias.",
+    "friendly": "🟢 Hola {nombre} 👋 Solo un recordatorio amistoso: tienes un saldo de {monto} con {app_cliente}. Llevas {dias_mora} días.",
+    "formal": "🟠 Estimado(a) {nombre}: Le informamos que su cuenta con {app_cliente} presenta un saldo pendiente de {monto} y {dias_mora} días de mora.",
+    "urgent": "🔴 ⚠️ URGENTE: {nombre}, su cuenta con {app_cliente} lleva {dias_mora} días de mora. Saldo: {monto}. Contáctenos de inmediato.",
 }
 
 @api_router.get("/templates/{country}", response_model=List[Template])
@@ -647,48 +651,55 @@ async def send_messages(req: SendRequest):
 
 # ---------- Reports ----------
 @api_router.get("/reports/summary")
-async def reports_summary():
-    total_contacts = await db.contacts.count_documents({})
-    pending = await db.contacts.count_documents({"status": "pending"})
-    sent = await db.contacts.count_documents({"status": "sent"})
-    errors = await db.contacts.count_documents({"status": "error"})
+async def reports_summary(country: Optional[str] = None):
+    country_filter = None
+    if country and country.upper() != "ALL" and country.upper() in VALID_COUNTRIES:
+        country_filter = country.upper()
+
+    base_q: Dict[str, Any] = {"country": country_filter} if country_filter else {}
+
+    total_contacts = await db.contacts.count_documents(base_q)
+    pending = await db.contacts.count_documents({**base_q, "status": "pending"})
+    sent = await db.contacts.count_documents({**base_q, "status": "sent"})
+    errors = await db.contacts.count_documents({**base_q, "status": "error"})
 
     # dispatches by channel
-    pipeline_channel = [
+    dispatch_match = [{"$match": {"country": country_filter}}] if country_filter else []
+    channel_stats = {}
+    async for doc in db.dispatches.aggregate(dispatch_match + [
         {"$group": {
             "_id": "$channel",
             "total": {"$sum": "$total"},
             "sent": {"$sum": "$sent"},
             "errors": {"$sum": "$errors"},
-        }},
-    ]
-    channel_stats = {}
-    async for doc in db.dispatches.aggregate(pipeline_channel):
+        }}
+    ]):
         channel_stats[doc["_id"]] = {"total": doc["total"], "sent": doc["sent"], "errors": doc["errors"]}
 
-    # global money aggregates
+    # money aggregates
     money = {"debt": 0.0, "recovered": 0.0}
-    async for doc in db.contacts.aggregate([
+    money_pipeline = ([{"$match": base_q}] if base_q else []) + [
         {"$group": {
             "_id": None,
             "debt": {"$sum": {"$ifNull": ["$monto", 0]}},
             "recovered": {"$sum": {"$ifNull": ["$monto_recuperado", 0]}},
         }}
-    ]):
+    ]
+    async for doc in db.contacts.aggregate(money_pipeline):
         money = {"debt": doc.get("debt", 0.0), "recovered": doc.get("recovered", 0.0)}
 
-    # global sms counter (from CSV column)
-    sms_from_csv = await db.contacts.count_documents({"sms_enviado": True})
-    formulario_ok = await db.contacts.count_documents({"formulario_guardado": True})
+    sms_from_csv = await db.contacts.count_documents({**base_q, "sms_enviado": True})
+    formulario_ok = await db.contacts.count_documents({**base_q, "formulario_guardado": True})
 
-    # estado counters (gestión)
+    # estado counters
     estado_counts = {"pendiente": 0, "pagado": 0, "sin_contacto": 0, "parcial": 0}
     for e in list(estado_counts.keys()):
-        estado_counts[e] = await db.contacts.count_documents({"estado": e})
+        estado_counts[e] = await db.contacts.count_documents({**base_q, "estado": e})
 
-    # per-country
+    # per-country (always all 4 for cross-country comparison in reports view)
     per_country = []
-    for c in VALID_COUNTRIES:
+    countries_to_iterate = [country_filter] if country_filter else list(VALID_COUNTRIES)
+    for c in countries_to_iterate:
         total = await db.contacts.count_documents({"country": c})
         p = await db.contacts.count_documents({"country": c, "status": "pending"})
         s = await db.contacts.count_documents({"country": c, "status": "sent"})
@@ -697,7 +708,6 @@ async def reports_summary():
         pagado_c = await db.contacts.count_documents({"country": c, "estado": "pagado"})
         parcial_c = await db.contacts.count_documents({"country": c, "estado": "parcial"})
         sin_contacto_c = await db.contacts.count_documents({"country": c, "estado": "sin_contacto"})
-        # per country money
         m = {"debt": 0.0, "recovered": 0.0}
         async for doc in db.contacts.aggregate([
             {"$match": {"country": c}},
@@ -731,6 +741,7 @@ async def reports_summary():
     recovery_rate = round((money["recovered"] / money["debt"]) * 100, 1) if money["debt"] else 0.0
 
     return {
+        "country_filter": country_filter,
         "total_contacts": total_contacts,
         "pending": pending,
         "sent": sent,
@@ -738,7 +749,6 @@ async def reports_summary():
         "total_sms": channel_stats.get("sms", {}).get("sent", 0),
         "total_whatsapp": channel_stats.get("whatsapp", {}).get("sent", 0),
         "success_rate": success_rate,
-        # New KPIs
         "total_debt": money["debt"],
         "total_recovered": money["recovered"],
         "recovery_rate": recovery_rate,

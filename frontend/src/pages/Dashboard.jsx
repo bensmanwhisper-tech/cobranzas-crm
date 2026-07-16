@@ -38,21 +38,21 @@ export default function Dashboard() {
 
   const loadSummary = useCallback(async () => {
     try {
-      const s = await endpoints.reportsSummary();
+      const s = await endpoints.reportsSummary(country);
       setSummary(s);
     } catch (e) {
       console.error(e);
     }
-  }, []);
+  }, [country]);
 
   const loadLogs = useCallback(async () => {
     try {
-      const l = await endpoints.getLogs({ limit: 60 });
+      const l = await endpoints.getLogs({ limit: 60, country: country !== "ALL" ? country : undefined });
       setLogs(l);
     } catch (e) {
       console.error(e);
     }
-  }, []);
+  }, [country]);
 
   const loadConfig = useCallback(async (c) => {
     try {
@@ -174,11 +174,11 @@ export default function Dashboard() {
           {tab === "dashboard" && (
             <div className="space-y-6" data-testid="tab-dashboard">
               <div>
-                <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500 mb-1">Panel general</div>
+                <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500 mb-1">Panel · {activeCountry.flag} {activeCountry.label}</div>
                 <h1 className="font-display font-bold text-3xl tracking-tight">
                   Buenos días, operador. <span className="text-zinc-500">Hoy es tu día.</span>
                 </h1>
-                <p className="text-zinc-400 text-sm mt-1">Vista consolidada de operaciones a través de los 4 países.</p>
+                <p className="text-zinc-400 text-sm mt-1">Vista de operaciones para <span style={{color: activeCountry.color}}>{activeCountry.label}</span>. Cambia el país arriba para ver otra cartera.</p>
               </div>
               <StatsCards summary={summary} />
               <RecoveryPanel summary={summary} />

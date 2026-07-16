@@ -183,15 +183,6 @@ export default function ContactsView({ country, onChange, embedded = false }) {
         />
 
         <button
-          data-testid="seed-demo-btn"
-          onClick={handleSeed}
-          className="text-xs px-3 py-1.5 rounded-md bg-[#0B0B0F] border border-white/5 hover:border-white/15 text-zinc-300 flex items-center gap-1.5"
-        >
-          <Sparkles size={13} className="text-[#E1FF00]" />
-          Cargar demo
-        </button>
-
-        <button
           data-testid="add-contact-btn"
           onClick={() => setAddOpen(true)}
           className="text-xs px-3 py-1.5 rounded-md bg-[#E1FF00] text-black font-semibold hover:bg-[#EEFF66] active:scale-95 transition-transform flex items-center gap-1.5"

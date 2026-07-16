@@ -4,7 +4,7 @@ import {
   MessageCircle, QrCode, Wifi, WifiOff, Upload, ArrowRight, ArrowLeft,
   Check, Send, Users, FileSpreadsheet, Copy, Sparkles, LogOut, RefreshCw, ChevronDown,
 } from "lucide-react";
-import { COUNTRIES, findCountry, TEMPLATE_KINDS, TEMPLATE_VARIABLES } from "@/lib/countries";
+import { COUNTRIES, findCountry, TEMPLATE_KINDS, TEMPLATE_VARIABLES, levelForMora, findTemplateKind } from "@/lib/countries";
 import { endpoints } from "@/lib/api";
 import { fmtLocal, fmtUsd } from "@/lib/money";
 
@@ -19,12 +19,13 @@ export default function WhatsAppCenter({ defaultCountry = "MX", onChange }) {
   const [step, setStep] = useState(1);
   const [country, setCountry] = useState(defaultCountry);
   const [status, setStatus] = useState({ connected: false, phone: "", webhook_url: "", has_key: false });
-  const [imported, setImported] = useState([]); // contacts loaded in the flow
+  const [imported, setImported] = useState([]);
   const [selected, setSelected] = useState(new Set());
   const [templates, setTemplates] = useState([]);
-  const [templateKind, setTemplateKind] = useState("default");
+  const [templateKind, setTemplateKind] = useState("nivel_1");
   const [customBody, setCustomBody] = useState("");
   const [customEnabled, setCustomEnabled] = useState(false);
+  const [autoLevel, setAutoLevel] = useState(true); // auto-choose level per contact
 
   const cty = findCountry(country);
 
@@ -169,6 +170,8 @@ export default function WhatsAppCenter({ defaultCountry = "MX", onChange }) {
             customEnabled={customEnabled}
             setCustomEnabled={setCustomEnabled}
             activeTemplateBody={activeTemplateBody}
+            autoLevel={autoLevel}
+            setAutoLevel={setAutoLevel}
             onSent={() => { setImported([]); setSelected(new Set()); setStep(1); onChange?.(); }}
           />
         )}
@@ -634,26 +637,37 @@ function StepReview({ country, contacts, selected, setSelected, onReload }) {
 // ---------- Step 4: Send ----------
 function StepSend({
   country, selected, contacts, templates, templateKind, setTemplateKind,
-  customBody, setCustomBody, customEnabled, setCustomEnabled, activeTemplateBody, onSent,
+  customBody, setCustomBody, customEnabled, setCustomEnabled, activeTemplateBody,
+  autoLevel, setAutoLevel, onSent,
 }) {
   const [sending, setSending] = useState(false);
   const cty = findCountry(country);
   const selectedContacts = contacts.filter((c) => selected.has(c.id));
   const first = selectedContacts[0];
 
+  const levelCounts = TEMPLATE_KINDS.reduce((acc, k) => {
+    acc[k.key] = selectedContacts.filter((c) => levelForMora(c.dias_mora) === k.key).length;
+    return acc;
+  }, {});
+
   const previewText = useMemo(() => {
-    if (!activeTemplateBody) return "";
-    if (!first) return activeTemplateBody;
-    return activeTemplateBody
+    const bodyToUse = customEnabled ? customBody : (
+      autoLevel && first
+        ? (templates.find((t) => t.kind === levelForMora(first.dias_mora))?.body || activeTemplateBody)
+        : activeTemplateBody
+    );
+    if (!bodyToUse) return "";
+    if (!first) return bodyToUse;
+    return bodyToUse
       .replaceAll("{nombre}", first.nombre || "")
-      .replaceAll("{monto}", `${first.monto || 0}`)
+      .replaceAll("{monto}", fmtLocal(first.monto || 0, first.country))
       .replaceAll("{fecha}", first.fecha || "")
       .replaceAll("{empresa}", first.empresa || "")
       .replaceAll("{vencimiento}", first.vencimiento || "")
       .replaceAll("{telefono}", first.telefono || "")
       .replaceAll("{dias_mora}", `${first.dias_mora || 0}`)
-      .replaceAll("{app_cliente}", first.app_cliente || "");
-  }, [activeTemplateBody, first]);
+      .replaceAll("{app_cliente}", first.app_cliente || first.solicitante || "");
+  }, [activeTemplateBody, first, customEnabled, customBody, autoLevel, templates]);
 
   const insertVar = (v) => setCustomBody((b) => (b || "") + v);
 
@@ -661,16 +675,34 @@ function StepSend({
     if (!selected.size) { toast.warning("Selecciona contactos"); return; }
     setSending(true);
     try {
-      const r = await endpoints.send({
-        country,
-        contact_ids: [...selected],
-        template_kind: templateKind,
-        channel: "whatsapp",
-        template_override: customEnabled ? customBody : null,
-      });
-      toast.success(`✓ Enviado a ${r.sent} contactos`, {
-        description: r.errors ? `${r.errors} errores` : "Sin errores",
-      });
+      if (autoLevel && !customEnabled) {
+        const byLevel = TEMPLATE_KINDS.reduce((acc, k) => {
+          acc[k.key] = selectedContacts.filter((c) => levelForMora(c.dias_mora) === k.key).map((c) => c.id);
+          return acc;
+        }, {});
+        let totalSent = 0, totalErrors = 0;
+        for (const k of Object.keys(byLevel)) {
+          if (!byLevel[k].length) continue;
+          const r = await endpoints.send({
+            country, contact_ids: byLevel[k], template_kind: k, channel: "whatsapp",
+          });
+          totalSent += r.sent; totalErrors += r.errors;
+        }
+        toast.success(`✓ Envío por nivel: ${totalSent} enviados`, {
+          description: totalErrors ? `${totalErrors} errores` : "Cada cliente recibió su plantilla según días de mora",
+        });
+      } else {
+        const r = await endpoints.send({
+          country,
+          contact_ids: [...selected],
+          template_kind: templateKind,
+          channel: "whatsapp",
+          template_override: customEnabled ? customBody : null,
+        });
+        toast.success(`✓ Enviado a ${r.sent} contactos`, {
+          description: r.errors ? `${r.errors} errores` : "Sin errores",
+        });
+      }
       onSent?.();
     } catch {
       toast.error("Error al enviar");
@@ -682,46 +714,66 @@ function StepSend({
       {/* Templates picker */}
       <div className="lg:col-span-2 bg-[#101013] border border-white/5 rounded-xl p-5 space-y-4">
         <div className="flex items-center justify-between">
-          <div className="text-[10px] uppercase tracking-widest text-zinc-500">Plantilla</div>
-          <label className="text-xs text-zinc-400 flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              data-testid="custom-toggle"
-              checked={customEnabled}
-              onChange={(e) => {
-                setCustomEnabled(e.target.checked);
-                if (e.target.checked) {
-                  const t = templates.find((x) => x.kind === templateKind);
-                  if (t && !customBody) setCustomBody(t.body);
-                }
-              }}
-              className="accent-[#E1FF00]"
-            />
-            Editar mensaje personalizado
-          </label>
+          <div className="text-[10px] uppercase tracking-widest text-zinc-500">Plantilla por nivel de mora</div>
+          <div className="flex items-center gap-4">
+            <label className="text-xs text-zinc-300 flex items-center gap-2 cursor-pointer bg-[#0B0B0F] border border-white/10 rounded-full px-3 py-1">
+              <input
+                type="checkbox"
+                data-testid="auto-level-toggle"
+                checked={autoLevel && !customEnabled}
+                onChange={(e) => setAutoLevel(e.target.checked)}
+                disabled={customEnabled}
+                className="accent-[#E1FF00]"
+              />
+              🤖 Auto por días de mora
+            </label>
+            <label className="text-xs text-zinc-400 flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                data-testid="custom-toggle"
+                checked={customEnabled}
+                onChange={(e) => {
+                  setCustomEnabled(e.target.checked);
+                  if (e.target.checked) {
+                    const t = templates.find((x) => x.kind === templateKind);
+                    if (t && !customBody) setCustomBody(t.body);
+                  }
+                }}
+                className="accent-[#E1FF00]"
+              />
+              Editar personalizado
+            </label>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           {TEMPLATE_KINDS.map((k) => {
-            const active = templateKind === k.key;
+            const active = !autoLevel && templateKind === k.key;
             const tpl = templates.find((t) => t.kind === k.key);
+            const count = levelCounts[k.key] || 0;
             return (
               <button
                 key={k.key}
                 data-testid={`send-tpl-${k.key}`}
                 onClick={() => {
+                  setAutoLevel(false);
                   setTemplateKind(k.key);
                   if (customEnabled && tpl) setCustomBody(tpl.body);
                 }}
                 className={`text-left p-3 rounded-md border transition-colors ${
-                  active ? "border-[#E1FF00]/40 bg-[#E1FF00]/5" : "border-white/5 bg-[#0B0B0F] hover:border-white/15"
+                  active ? "border-[#E1FF00]/40 bg-[#E1FF00]/5" : autoLevel && count > 0 ? "border-emerald-500/30 bg-emerald-500/5" : "border-white/5 bg-[#0B0B0F] hover:border-white/15"
                 }`}
               >
-                <div className="text-xl">{k.icon}</div>
-                <div className="text-sm font-medium mt-1">{k.label}</div>
-                <div className="text-[10px] text-zinc-500 font-mono mt-0.5 truncate">
-                  {tpl?.body?.slice(0, 40) || "..."}
+                <div className="flex items-center justify-between">
+                  <span className="text-xl">{k.icon}</span>
+                  {autoLevel && count > 0 && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono">
+                      {count}
+                    </span>
+                  )}
                 </div>
+                <div className="text-sm font-medium mt-1">{k.label}</div>
+                <div className="text-[10px] text-zinc-500 font-mono mt-0.5">{k.description}</div>
               </button>
             );
           })}

@@ -8,11 +8,21 @@ export const COUNTRIES = [
 export const findCountry = (code) => COUNTRIES.find((c) => c.code === code) || COUNTRIES[0];
 
 export const TEMPLATE_KINDS = [
-  { key: "default", label: "Por defecto", icon: "🌐" },
-  { key: "friendly", label: "Amigable", icon: "😊" },
-  { key: "formal", label: "Formal", icon: "📌" },
-  { key: "urgent", label: "Urgente", icon: "⚠️" },
+  { key: "nivel_1", label: "Nivel 1 · Amigable", icon: "🟢", moraMin: 0, moraMax: 9, description: "5-9 días · Cobrar con descuento o facilidades" },
+  { key: "nivel_2", label: "Nivel 2 · Directo", icon: "🟡", moraMin: 9, moraMax: 20, description: "9-20 días · Exigir pago o acuerdo de pago" },
+  { key: "nivel_3", label: "Nivel 3 · Firme", icon: "🟠", moraMin: 20, moraMax: 35, description: "20-35 días · Última oportunidad antes de acciones" },
+  { key: "nivel_4", label: "Nivel 4 · Fuerte", icon: "🔴", moraMin: 35, moraMax: 9999, description: "35+ días · Advertencia legal / buró" },
 ];
+
+export function levelForMora(dias) {
+  const d = Number(dias || 0);
+  if (d >= 35) return "nivel_4";
+  if (d >= 20) return "nivel_3";
+  if (d >= 9) return "nivel_2";
+  return "nivel_1";
+}
+
+export const findTemplateKind = (k) => TEMPLATE_KINDS.find((t) => t.key === k) || TEMPLATE_KINDS[0];
 
 export const TEMPLATE_VARIABLES = [
   "{nombre}",
