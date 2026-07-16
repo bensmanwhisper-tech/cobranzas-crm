@@ -193,17 +193,6 @@ export default function ContactsView({ country, onChange, embedded = false }) {
 
         <div className="flex-1" />
 
-        <select
-          data-testid="template-kind-select"
-          value={templateKind}
-          onChange={(e) => setTemplateKind(e.target.value)}
-          className="bg-[#0B0B0F] border border-white/5 text-xs rounded-md px-2 py-1.5 text-zinc-300 outline-none focus:border-white/20"
-        >
-          {TEMPLATE_KINDS.map((t) => (
-            <option key={t.key} value={t.key}>{t.icon} {t.label}</option>
-          ))}
-        </select>
-
         <button
           data-testid="refresh-btn"
           onClick={load}

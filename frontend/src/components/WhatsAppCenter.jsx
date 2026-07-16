@@ -747,6 +747,11 @@ function StepSend({
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div className="col-span-full flex items-center justify-between mb-1">
+            <div className="text-[11px] text-zinc-500 font-mono">
+              📁 Plantillas guardadas para <span style={{color: cty.color}}>{cty.flag} {cty.label}</span> ({templates.length}) · <span className="text-zinc-600">se sincronizan desde la pestaña Plantillas</span>
+            </div>
+          </div>
           {TEMPLATE_KINDS.map((k) => {
             const active = !autoLevel && templateKind === k.key;
             const tpl = templates.find((t) => t.kind === k.key);

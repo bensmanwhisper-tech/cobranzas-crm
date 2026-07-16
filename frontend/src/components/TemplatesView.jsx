@@ -4,7 +4,7 @@ import { Save, Copy } from "lucide-react";
 import { TEMPLATE_KINDS, TEMPLATE_VARIABLES, findCountry } from "@/lib/countries";
 import { endpoints } from "@/lib/api";
 
-export default function TemplatesView({ country }) {
+export default function TemplatesView({ country, onGoWhatsApp }) {
   const [templates, setTemplates] = useState([]);
   const [active, setActive] = useState("default");
   const [body, setBody] = useState("");
@@ -35,7 +35,11 @@ export default function TemplatesView({ country }) {
         if (idx >= 0) { const copy = [...prev]; copy[idx] = t; return copy; }
         return [...prev, t];
       });
-      toast.success("Plantilla guardada");
+      toast.success(`✓ Plantilla ${active} guardada para ${cty.flag} ${cty.label}`, {
+        description: "Ya está disponible en WhatsApp Center · Paso 4",
+        action: onGoWhatsApp ? { label: "Ir ahora →", onClick: () => onGoWhatsApp() } : undefined,
+        duration: 5000,
+      });
     } finally { setSaving(false); }
   };
 

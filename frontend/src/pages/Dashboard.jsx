@@ -206,7 +206,7 @@ export default function Dashboard() {
 
           {tab === "templates" && (
             <div data-testid="tab-templates">
-              <TemplatesView country={country} />
+              <TemplatesView country={country} onGoWhatsApp={() => setTab("whatsapp")} />
             </div>
           )}
 
@@ -218,7 +218,7 @@ export default function Dashboard() {
 
           {tab === "reports" && (
             <div data-testid="tab-reports">
-              <ReportsView summary={summary} />
+              <ReportsView />
             </div>
           )}
 

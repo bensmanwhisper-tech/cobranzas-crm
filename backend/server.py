@@ -1071,6 +1071,86 @@ async def whatsapp_status(country: str):
     }
 
 
+@api_router.get("/reports/timeseries")
+async def reports_timeseries(period: str = "day", days: int = 30, country: Optional[str] = None):
+    """Return time buckets with dispatches + recovery aggregations.
+    period: day | week | month
+    days: total window size in days (backwards from now)
+    country: optional filter
+    """
+    from datetime import timedelta
+
+    if period not in ("day", "week", "month"):
+        period = "day"
+    days = max(1, min(days, 365))
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(days=days)
+    since_iso = since.isoformat()
+
+    country_filter = country.upper() if country and country.upper() in VALID_COUNTRIES else None
+
+    def bucket_key(dt: datetime) -> str:
+        if period == "day":
+            return dt.strftime("%Y-%m-%d")
+        if period == "week":
+            iso = dt.isocalendar()
+            return f"{iso[0]}-W{iso[1]:02d}"
+        return dt.strftime("%Y-%m")
+
+    def parse_ts(v):
+        try:
+            if isinstance(v, str):
+                return datetime.fromisoformat(v.replace("Z", "+00:00"))
+            return v
+        except Exception:
+            return None
+
+    # dispatches
+    d_q = {"ts": {"$gte": since_iso}}
+    if country_filter:
+        d_q["country"] = country_filter
+    buckets: Dict[str, Dict[str, Any]] = {}
+    async for doc in db.dispatches.find(d_q, {"_id": 0}):
+        dt = parse_ts(doc.get("ts"))
+        if not dt:
+            continue
+        k = bucket_key(dt)
+        b = buckets.setdefault(k, {"bucket": k, "sent": 0, "errors": 0, "recovered": 0.0, "recovered_by_country": {}})
+        b["sent"] += doc.get("sent", 0)
+        b["errors"] += doc.get("errors", 0)
+
+    # recovery — sum monto_recuperado from contacts with updated_at in window
+    c_q: Dict[str, Any] = {"updated_at": {"$gte": since_iso}, "monto_recuperado": {"$gt": 0}}
+    if country_filter:
+        c_q["country"] = country_filter
+    async for doc in db.contacts.find(c_q, {"_id": 0}):
+        dt = parse_ts(doc.get("updated_at"))
+        if not dt:
+            continue
+        k = bucket_key(dt)
+        b = buckets.setdefault(k, {"bucket": k, "sent": 0, "errors": 0, "recovered": 0.0, "recovered_by_country": {}})
+        cty = doc.get("country") or "??"
+        amt = float(doc.get("monto_recuperado", 0) or 0)
+        b["recovered"] += amt
+        b["recovered_by_country"][cty] = b["recovered_by_country"].get(cty, 0.0) + amt
+
+    series = sorted(buckets.values(), key=lambda x: x["bucket"])
+
+    # Simple projection: avg last N (up to 7) days recovered → project next 30d
+    recent = [b["recovered"] for b in series[-7:]]
+    daily_avg = sum(recent) / len(recent) if recent else 0.0
+    projection_30d = daily_avg * 30
+
+    return {
+        "period": period,
+        "days": days,
+        "country": country_filter,
+        "series": series,
+        "projection_30d_recovered": projection_30d,
+        "avg_daily_recovered": daily_avg,
+    }
+
+
 @api_router.get("/fx/rates")
 async def fx_rates(force: bool = False):
     return {**get_rates(force=force), "country_currency": COUNTRY_CURRENCY}
