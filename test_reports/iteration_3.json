@@ -1,0 +1,33 @@
+{
+  "summary": "Verified bug fix: PATCH /api/contacts/{id} now auto-syncs monto_recuperado when estado changes. All 11 tests pass (6 bug-fix scenarios + 5 regression tests).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_estado_pagado_sync.py",
+    "/app/test_reports/pytest/estado_sync.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is 1111 lines — consider splitting into routers (contacts, reports, whatsapp) for maintainability.",
+    "Regression logic in update_contact resets monto_recuperado only when current_rec >= monto; if a user had a partial recovery and then sets estado='pendiente', the partial is preserved — behavior is intentional but worth documenting."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_estado_pagado_sync.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "not tested (per request)"},
+  "test_credentials": "N/A - app has no authentication",
+  "seed_data_creation": "Each test creates a TEST_-prefixed contact and deletes it after use (self-cleaning).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Bug fix verified: marking contact 'pagado' now automatically sets monto_recuperado = monto (unless explicit value provided). Regression to 'pendiente' or 'sin_contacto' from fully-paid resets monto_recuperado to 0. 'parcial' does not touch it. reports/summary correctly reflects the new recovered amount.",
+  "verified_scenarios": [
+    "estado=pagado -> monto_recuperado=monto",
+    "estado=pagado + explicit monto_recuperado=500 -> respects 500",
+    "pagado -> pendiente -> monto_recuperado=0",
+    "pagado -> sin_contacto -> monto_recuperado=0",
+    "parcial preserves monto_recuperado",
+    "reports/summary?country=CL reflects +monto after marking pagado",
+    "PATCH /contacts/{id}/recovered still works",
+    "notes, reminders, filter by estado, whatsapp/import endpoints still working"
+  ]
+}

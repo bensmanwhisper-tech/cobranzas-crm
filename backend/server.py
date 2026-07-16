@@ -266,6 +266,19 @@ async def update_contact(contact_id: str, upd: ContactUpdate):
         raise HTTPException(400, "Invalid status")
     if patch.get("estado") and patch["estado"] not in CONTACT_ESTADOS:
         raise HTTPException(400, "Invalid estado")
+    # Auto-sync monto_recuperado when estado transitions between "pagado" and others.
+    # Only when the caller isn't explicitly setting monto_recuperado in the same request.
+    if "estado" in patch and "monto_recuperado" not in patch:
+        monto = float(existing.get("monto") or 0)
+        current_rec = float(existing.get("monto_recuperado") or 0)
+        new_estado = patch["estado"]
+        if new_estado == "pagado":
+            # mark fully recovered
+            patch["monto_recuperado"] = monto
+        elif new_estado in {"pendiente", "sin_contacto"}:
+            # if it was fully paid but now we regress, reset recovered to 0
+            if current_rec >= monto and monto > 0:
+                patch["monto_recuperado"] = 0.0
     await db.contacts.update_one({"id": contact_id}, {"$set": patch})
     updated = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
     if patch.get("estado"):
