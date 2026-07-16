@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { toast } from "sonner";
-import { CheckSquare, Square, Upload, Trash2, Send, Eye, Filter, RefreshCw, Plus, Sparkles } from "lucide-react";
-import { COUNTRIES, findCountry, TEMPLATE_KINDS, ESTADOS, findEstado } from "@/lib/countries";
+import { CheckSquare, Square, Upload, Trash2, Send, Eye, Filter, RefreshCw, Plus, Sparkles, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { COUNTRIES, findCountry, TEMPLATE_KINDS, ESTADOS, findEstado, levelForMora, findTemplateKind } from "@/lib/countries";
 import { endpoints } from "@/lib/api";
 import { fmtLocal, fmtUsd } from "@/lib/money";
 import ClientDetail from "@/components/ClientDetail";
@@ -16,11 +16,13 @@ export default function ContactsView({ country, onChange, embedded = false }) {
   const [contacts, setContacts] = useState([]);
   const [filterEstado, setFilterEstado] = useState("all");
   const [filterCountry, setFilterCountry] = useState(country);
+  const [filterNivel, setFilterNivel] = useState("all"); // all | nivel_1..4
+  const [sortMora, setSortMora] = useState("desc"); // desc | asc | null
   const [selected, setSelected] = useState(new Set());
   const [loading, setLoading] = useState(false);
   const [detail, setDetail] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
-  const [templateKind, setTemplateKind] = useState("default");
+  const [templateKind, setTemplateKind] = useState("nivel_1");
   const fileRef = useRef(null);
 
   useEffect(() => { setFilterCountry(country); }, [country]);
@@ -39,6 +41,26 @@ export default function ContactsView({ country, onChange, embedded = false }) {
   }, [filterCountry, filterEstado]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Filter by nivel + sort by mora
+  const filtered = useMemo(() => {
+    let arr = contacts;
+    if (filterNivel !== "all") {
+      arr = arr.filter((c) => levelForMora(c.dias_mora) === filterNivel);
+    }
+    if (sortMora) {
+      arr = [...arr].sort((a, b) => {
+        const av = a.dias_mora || 0;
+        const bv = b.dias_mora || 0;
+        return sortMora === "asc" ? av - bv : bv - av;
+      });
+    }
+    return arr;
+  }, [contacts, filterNivel, sortMora]);
+
+  const cycleSort = () => {
+    setSortMora((s) => (s === "desc" ? "asc" : s === "asc" ? null : "desc"));
+  };
 
   const toggleAll = () => {
     if (selected.size === contacts.length) setSelected(new Set());
@@ -101,7 +123,6 @@ export default function ContactsView({ country, onChange, embedded = false }) {
     onChange?.();
   };
 
-  const filtered = contacts;
   const allSelected = filtered.length > 0 && selected.size === filtered.length;
 
   return (
@@ -139,6 +160,33 @@ export default function ContactsView({ country, onChange, embedded = false }) {
             >
               <span>{c.flag}</span>
               <span>{c.label}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-1 bg-[#0B0B0F] rounded-md p-1 border border-white/5" data-testid="nivel-filter">
+          <button
+            data-testid="nivel-all"
+            onClick={() => setFilterNivel("all")}
+            className={`px-2.5 py-1 text-xs rounded transition-colors ${
+              filterNivel === "all" ? "bg-white/10 text-white" : "text-zinc-400 hover:text-white"
+            }`}
+            title="Todos los niveles"
+          >
+            Nivel: Todos
+          </button>
+          {TEMPLATE_KINDS.map((n) => (
+            <button
+              key={n.key}
+              data-testid={`nivel-${n.key}`}
+              onClick={() => setFilterNivel(n.key)}
+              className={`px-2 py-1 text-xs rounded transition-colors flex items-center gap-1 ${
+                filterNivel === n.key ? "bg-white/10 text-white" : "text-zinc-400 hover:text-white"
+              }`}
+              title={n.description}
+            >
+              <span>{n.icon}</span>
+              <span>N{n.key.split("_")[1]}</span>
             </button>
           ))}
         </div>
@@ -205,7 +253,24 @@ export default function ContactsView({ country, onChange, embedded = false }) {
                 </th>
                 <th className="py-2.5 px-3">Nombre</th>
                 <th className="py-2.5 px-3">Teléfono</th>
-                <th className="py-2.5 px-3">Mora</th>
+                <th className="py-2.5 px-3">
+                  <button
+                    data-testid="sort-mora"
+                    onClick={cycleSort}
+                    className="flex items-center gap-1 hover:text-white transition-colors"
+                    title="Ordenar por días de mora"
+                  >
+                    Mora
+                    {sortMora === "desc" ? (
+                      <ArrowDown size={11} className="text-[#E1FF00]" />
+                    ) : sortMora === "asc" ? (
+                      <ArrowUp size={11} className="text-[#E1FF00]" />
+                    ) : (
+                      <ArrowUpDown size={11} className="opacity-40" />
+                    )}
+                  </button>
+                </th>
+                <th className="py-2.5 px-3">Nivel</th>
                 <th className="py-2.5 px-3">Solicitante</th>
                 <th className="py-2.5 px-3">Monto</th>
                 <th className="py-2.5 px-3">Recup.</th>
@@ -217,7 +282,7 @@ export default function ContactsView({ country, onChange, embedded = false }) {
             <tbody className="font-mono text-[13px]">
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="py-16 text-center text-zinc-500 font-sans">
+                  <td colSpan={11} className="py-16 text-center text-zinc-500 font-sans">
                     {loading ? (
                       <span className="ascii-loader" />
                     ) : (
@@ -232,6 +297,7 @@ export default function ContactsView({ country, onChange, embedded = false }) {
               {filtered.map((c, i) => {
                 const cty = findCountry(c.country);
                 const est = findEstado(c.estado || "pendiente");
+                const nivel = findTemplateKind(levelForMora(c.dias_mora));
                 const isSel = selected.has(c.id);
                 const mora = c.dias_mora || 0;
                 const moraColor = mora > 60 ? "#F87171" : mora > 30 ? "#FDE047" : "#34D399";
@@ -256,6 +322,18 @@ export default function ContactsView({ country, onChange, embedded = false }) {
                         style={{ background: `${moraColor}22`, color: moraColor }}
                       >
                         {mora}d
+                      </span>
+                    </td>
+                    <td className="py-1.5 px-3" title={nivel.description}>
+                      <span
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-sans text-[10px] font-semibold border"
+                        style={{
+                          background: "rgba(255,255,255,0.03)",
+                          borderColor: "rgba(255,255,255,0.08)",
+                        }}
+                      >
+                        <span className="text-sm leading-none">{nivel.icon}</span>
+                        <span className="text-zinc-300 uppercase tracking-wider">N{nivel.key.split("_")[1]}</span>
                       </span>
                     </td>
                     <td className="py-1.5 px-3 text-zinc-300 font-sans max-w-[180px] truncate" title={c.solicitante || c.app_cliente}>
@@ -314,7 +392,9 @@ export default function ContactsView({ country, onChange, embedded = false }) {
           <span>
             {filtered.length} contactos · {selected.size} seleccionados
           </span>
-          <span className="text-zinc-600">Ordenados por fecha ↓</span>
+          <span className="text-zinc-600">
+            {sortMora ? (sortMora === "desc" ? "Ordenado: más morosos primero ↓" : "Ordenado: menos morosos primero ↑") : "Sin orden por mora"}
+          </span>
         </div>
       </div>
 
