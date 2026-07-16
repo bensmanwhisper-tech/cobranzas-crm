@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { toast } from "sonner";
-import { LayoutGrid, Users, MessageSquareText, BarChart3, Terminal, Settings, Radio, Sparkles, HardDrive } from "lucide-react";
+import { LayoutGrid, Users, MessageSquareText, BarChart3, Terminal, Settings, Radio, Sparkles, HardDrive, MessageCircle } from "lucide-react";
 import { COUNTRIES, findCountry } from "@/lib/countries";
 import { endpoints } from "@/lib/api";
 import CountrySelector from "@/components/CountrySelector";
@@ -12,9 +12,11 @@ import ConfigView from "@/components/ConfigView";
 import ExecutionConsole from "@/components/ExecutionConsole";
 import WhatsAppIndicator from "@/components/WhatsAppIndicator";
 import FilesView from "@/components/FilesView";
+import WhatsAppCenter from "@/components/WhatsAppCenter";
 
 const NAV = [
   { key: "dashboard", label: "Panel", icon: LayoutGrid },
+  { key: "whatsapp", label: "WhatsApp", icon: MessageCircle, highlight: true },
   { key: "contacts", label: "Contactos", icon: Users },
   { key: "templates", label: "Plantillas", icon: MessageSquareText },
   { key: "files", label: "Archivos", icon: HardDrive },
@@ -108,7 +110,7 @@ export default function Dashboard() {
         </div>
 
         <nav className="flex-1 p-3 space-y-1">
-          {NAV.map(({ key, label, icon: Icon }) => {
+          {NAV.map(({ key, label, icon: Icon, highlight }) => {
             const active = tab === key;
             return (
               <button
@@ -118,11 +120,14 @@ export default function Dashboard() {
                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
                   active
                     ? "bg-white/5 text-white border border-white/10"
+                    : highlight
+                    ? "text-emerald-300 hover:bg-emerald-500/5 hover:text-emerald-200 border border-emerald-500/10"
                     : "text-zinc-400 hover:bg-white/[0.03] hover:text-white border border-transparent"
                 }`}
               >
-                <Icon size={16} strokeWidth={active ? 2.2 : 1.8} className={active ? "text-[#E1FF00]" : ""} />
+                <Icon size={16} strokeWidth={active ? 2.2 : 1.8} className={active ? "text-[#E1FF00]" : highlight ? "text-emerald-400" : ""} />
                 <span className="font-medium">{label}</span>
+                {highlight && !active && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot" />}
               </button>
             );
           })}
@@ -187,6 +192,12 @@ export default function Dashboard() {
                   <ExecutionConsole logs={logs} onClear={() => endpoints.clearLogs().then(loadLogs)} embedded />
                 </div>
               </div>
+            </div>
+          )}
+
+          {tab === "whatsapp" && (
+            <div data-testid="tab-whatsapp">
+              <WhatsAppCenter defaultCountry={country} onChange={bump} />
             </div>
           )}
 

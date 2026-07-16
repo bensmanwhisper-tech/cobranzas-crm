@@ -60,4 +60,19 @@ export const endpoints = {
   deleteFile: (id) => api.delete(`/files/${id}`).then((r) => r.data),
   fileDownloadUrl: (id) => `${API}/files/${id}/download`,
   importContactsFromFile: (id) => api.post(`/files/import-contacts/${id}`).then((r) => r.data),
+
+  // WhatsApp Center
+  whatsappImportCsv: (country, dialCode, file) => {
+    const fd = new FormData();
+    fd.append("country", country);
+    if (dialCode) fd.append("dial_code", dialCode);
+    fd.append("file", file);
+    return api.post(`/whatsapp/import`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }).then((r) => r.data);
+  },
+  whatsappQr: (country) => api.get(`/whatsapp/qr/${country}`).then((r) => r.data),
+  whatsappConnect: (country, payload) => api.post(`/whatsapp/connect/${country}`, payload).then((r) => r.data),
+  whatsappDisconnect: (country) => api.post(`/whatsapp/disconnect/${country}`).then((r) => r.data),
+  whatsappStatus: (country) => api.get(`/whatsapp/status/${country}`).then((r) => r.data),
 };

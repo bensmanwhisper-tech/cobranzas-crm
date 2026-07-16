@@ -227,11 +227,11 @@ export default function ContactsView({ country, onChange, embedded = false }) {
                 </th>
                 <th className="py-2.5 px-3">Nombre</th>
                 <th className="py-2.5 px-3">Teléfono</th>
+                <th className="py-2.5 px-3">Días mora</th>
+                <th className="py-2.5 px-3">App</th>
                 <th className="py-2.5 px-3">Monto</th>
-                <th className="py-2.5 px-3">Empresa</th>
                 <th className="py-2.5 px-3">País</th>
                 <th className="py-2.5 px-3">Estado</th>
-                <th className="py-2.5 px-3">Vence</th>
                 <th className="py-2.5 px-3 w-10"></th>
               </tr>
             </thead>
@@ -244,7 +244,7 @@ export default function ContactsView({ country, onChange, embedded = false }) {
                     ) : (
                       <>
                         <div className="text-4xl mb-2">📭</div>
-                        Sin contactos. Importa un CSV o carga la demo.
+                        Sin contactos. Ve a <span className="text-emerald-400 font-semibold">WhatsApp Center</span> para cargar un CSV, o usa "Cargar demo".
                       </>
                     )}
                   </td>
@@ -254,6 +254,8 @@ export default function ContactsView({ country, onChange, embedded = false }) {
                 const cty = findCountry(c.country);
                 const st = STATUS_META[c.status] || STATUS_META.pending;
                 const isSel = selected.has(c.id);
+                const mora = c.dias_mora || 0;
+                const moraColor = mora > 60 ? "#F87171" : mora > 30 ? "#FDE047" : "#34D399";
                 return (
                   <tr
                     key={c.id}
@@ -267,8 +269,20 @@ export default function ContactsView({ country, onChange, embedded = false }) {
                     </td>
                     <td className="py-1.5 px-3 text-white font-medium font-sans">{c.nombre}</td>
                     <td className="py-1.5 px-3 text-zinc-400">{c.telefono}</td>
+                    <td className="py-1.5 px-3">
+                      <span
+                        className="px-2 py-0.5 rounded font-sans font-bold text-xs"
+                        style={{ background: `${moraColor}22`, color: moraColor }}
+                      >
+                        {mora}d
+                      </span>
+                    </td>
+                    <td className="py-1.5 px-3 text-zinc-300 font-sans">
+                      {c.app_cliente ? (
+                        <span className="px-1.5 py-0.5 rounded bg-white/5 text-xs font-mono">{c.app_cliente}</span>
+                      ) : <span className="text-zinc-600">—</span>}
+                    </td>
                     <td className="py-1.5 px-3 text-white">${Number(c.monto).toLocaleString()}</td>
-                    <td className="py-1.5 px-3 text-zinc-400 font-sans">{c.empresa || "—"}</td>
                     <td className="py-1.5 px-3">
                       <span
                         className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-sans font-semibold"
@@ -286,7 +300,6 @@ export default function ContactsView({ country, onChange, embedded = false }) {
                         {st.label}
                       </span>
                     </td>
-                    <td className="py-1.5 px-3 text-zinc-400 font-mono text-xs">{c.vencimiento || "—"}</td>
                     <td className="py-1.5 px-3">
                       <button
                         onClick={() => setPreview(c)}
@@ -398,11 +411,12 @@ function PreviewCard({ contact }) {
         </div>
       </div>
       {[
+        ["Días de mora", `${contact.dias_mora || 0} días`],
+        ["App cliente", contact.app_cliente || "—"],
         ["Empresa", contact.empresa || "—"],
         ["Monto", `$${Number(contact.monto).toLocaleString()}`],
         ["País", `${cty.flag} ${cty.label}`],
         ["Vencimiento", contact.vencimiento || "—"],
-        ["Fecha", contact.fecha || "—"],
         ["Estado", contact.status],
       ].map(([k, v]) => (
         <div key={k} className="flex justify-between text-xs">
@@ -426,6 +440,8 @@ function AddContactModal({ country, onClose, onCreated }) {
     monto: "",
     empresa: "",
     vencimiento: "",
+    dias_mora: "",
+    app_cliente: "",
     country,
   });
   const submit = async (e) => {
@@ -438,6 +454,7 @@ function AddContactModal({ country, onClose, onCreated }) {
       await endpoints.createContact({
         ...form,
         monto: parseFloat(form.monto || "0") || 0,
+        dias_mora: parseInt(form.dias_mora || "0", 10) || 0,
       });
       toast.success("Contacto creado");
       onCreated();
@@ -451,6 +468,8 @@ function AddContactModal({ country, onClose, onCreated }) {
         {[
           ["nombre", "Nombre completo", true],
           ["telefono", "Teléfono (con lada)", true],
+          ["dias_mora", "Días de mora", false],
+          ["app_cliente", "App / Producto (Kueski, Nequi, Yape, Mach...)", false],
           ["monto", "Monto adeudado", false],
           ["empresa", "Empresa", false],
           ["vencimiento", "Fecha de vencimiento (YYYY-MM-DD)", false],

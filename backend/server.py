@@ -46,6 +46,7 @@ class CountryConfig(BaseModel):
     scripts_folder: Optional[str] = "C:\\Cobranzas\\App\\backend\\scripts_subidos\\"
     whatsapp_webhook_url: Optional[str] = ""
     whatsapp_api_key: Optional[str] = ""
+    whatsapp_phone: Optional[str] = ""
     whatsapp_connected: Optional[bool] = False
     updated_at: Optional[str] = None
 
@@ -58,6 +59,8 @@ class Contact(BaseModel):
     empresa: Optional[str] = ""
     vencimiento: Optional[str] = ""
     fecha: Optional[str] = ""
+    dias_mora: int = 0
+    app_cliente: Optional[str] = ""
     country: str
     status: str = "pending"  # pending, sent, error
     last_error: Optional[str] = ""
@@ -71,6 +74,8 @@ class ContactCreate(BaseModel):
     empresa: Optional[str] = ""
     vencimiento: Optional[str] = ""
     fecha: Optional[str] = ""
+    dias_mora: int = 0
+    app_cliente: Optional[str] = ""
     country: str
 
 class ContactUpdate(BaseModel):
@@ -80,6 +85,8 @@ class ContactUpdate(BaseModel):
     empresa: Optional[str] = None
     vencimiento: Optional[str] = None
     fecha: Optional[str] = None
+    dias_mora: Optional[int] = None
+    app_cliente: Optional[str] = None
     status: Optional[str] = None
 
 class Template(BaseModel):
@@ -147,6 +154,8 @@ def render_template(body: str, contact: Dict[str, Any]) -> str:
         "{empresa}": str(contact.get("empresa", "")),
         "{vencimiento}": str(contact.get("vencimiento", "")),
         "{telefono}": str(contact.get("telefono", "")),
+        "{dias_mora}": str(contact.get("dias_mora", 0)),
+        "{app_cliente}": str(contact.get("app_cliente", "")),
     }
     for k, v in mapping.items():
         out = out.replace(k, v)
@@ -277,22 +286,22 @@ async def import_contacts(country: str = Form(...), file: UploadFile = File(...)
 async def seed_demo(country: Optional[str] = None):
     """Insert demo contacts for testing."""
     demo_data = [
-        ("Carlos Ramírez", "+52 55 1234 5678", 4520.50, "Grupo Aguila", "MX"),
-        ("María López", "+52 33 2345 6789", 8900.00, "Cementos MX", "MX"),
-        ("José Hernández", "+52 81 3456 7890", 1250.75, "Autopartes SA", "MX"),
-        ("Ana García", "+52 55 4567 8901", 15600.00, "Constructora del Norte", "MX"),
-        ("Andrés Torres", "+57 300 111 2233", 3200.00, "Bavaria SA", "CO"),
-        ("Diana Vargas", "+57 301 222 3344", 7800.90, "Ecopetrol", "CO"),
-        ("Camilo Ruiz", "+57 310 333 4455", 2100.00, "Bancolombia", "CO"),
-        ("Rocío Mendoza", "+51 987 654 321", 5600.00, "Backus SA", "PE"),
-        ("Luis Quispe", "+51 986 543 210", 12400.00, "Alicorp", "PE"),
-        ("Fernanda Castillo", "+51 985 432 109", 890.00, "Interbank", "PE"),
-        ("Sebastián Rojas", "+56 9 8765 4321", 6700.00, "Falabella", "CL"),
-        ("Valentina Núñez", "+56 9 7654 3210", 3400.50, "Cencosud", "CL"),
-        ("Matías Pérez", "+56 9 6543 2109", 9200.00, "Copec SA", "CL"),
+        ("Carlos Ramírez", "+52 55 1234 5678", 4520.50, "Grupo Aguila", "MX", 15, "Kueski"),
+        ("María López", "+52 33 2345 6789", 8900.00, "Cementos MX", "MX", 45, "Nu"),
+        ("José Hernández", "+52 81 3456 7890", 1250.75, "Autopartes SA", "MX", 8, "Rappi Pay"),
+        ("Ana García", "+52 55 4567 8901", 15600.00, "Constructora del Norte", "MX", 60, "Kueski"),
+        ("Andrés Torres", "+57 300 111 2233", 3200.00, "Bavaria SA", "CO", 22, "Nequi"),
+        ("Diana Vargas", "+57 301 222 3344", 7800.90, "Ecopetrol", "CO", 90, "Daviplata"),
+        ("Camilo Ruiz", "+57 310 333 4455", 2100.00, "Bancolombia", "CO", 5, "Nequi"),
+        ("Rocío Mendoza", "+51 987 654 321", 5600.00, "Backus SA", "PE", 30, "Yape"),
+        ("Luis Quispe", "+51 986 543 210", 12400.00, "Alicorp", "PE", 120, "Plin"),
+        ("Fernanda Castillo", "+51 985 432 109", 890.00, "Interbank", "PE", 12, "Yape"),
+        ("Sebastián Rojas", "+56 9 8765 4321", 6700.00, "Falabella", "CL", 18, "Mach"),
+        ("Valentina Núñez", "+56 9 7654 3210", 3400.50, "Cencosud", "CL", 40, "Fpay"),
+        ("Matías Pérez", "+56 9 6543 2109", 9200.00, "Copec SA", "CL", 75, "Mach"),
     ]
     inserted = 0
-    for nombre, tel, monto, empresa, cty in demo_data:
+    for nombre, tel, monto, empresa, cty, mora, app_cli in demo_data:
         if country and country.upper() != cty:
             continue
         c = Contact(
@@ -302,6 +311,8 @@ async def seed_demo(country: Optional[str] = None):
             empresa=empresa,
             vencimiento="2026-03-15",
             fecha=datetime.now().strftime("%Y-%m-%d"),
+            dias_mora=mora,
+            app_cliente=app_cli,
             country=cty,
         )
         await db.contacts.insert_one(c.model_dump())
@@ -311,10 +322,10 @@ async def seed_demo(country: Optional[str] = None):
 
 # ---------- Templates ----------
 DEFAULT_TEMPLATES = {
-    "default": "Hola {nombre}, le recordamos que tiene un saldo pendiente de ${monto} con {empresa}. Fecha de vencimiento: {vencimiento}. Gracias.",
-    "friendly": "Hola {nombre} 👋 Solo un recordatorio amistoso: tienes un saldo de ${monto} con {empresa}. Vence el {vencimiento}. ¡Cualquier duda, escríbenos!",
-    "formal": "Estimado(a) {nombre}: Le informamos que su cuenta presenta un saldo pendiente de ${monto} con {empresa}, con fecha de vencimiento {vencimiento}. Favor de regularizar.",
-    "urgent": "⚠️ URGENTE: {nombre}, su cuenta con {empresa} vence HOY ({vencimiento}). Saldo: ${monto}. Contáctenos de inmediato para evitar cargos adicionales.",
+    "default": "Hola {nombre}, le recordamos que tiene un saldo pendiente de ${monto} con {app_cliente}. Presenta {dias_mora} días de mora. Fecha de vencimiento: {vencimiento}. Gracias.",
+    "friendly": "Hola {nombre} 👋 Solo un recordatorio amistoso: tienes un saldo de ${monto} con {app_cliente}. Llevas {dias_mora} días. ¡Regularicemos hoy y cualquier duda escríbenos!",
+    "formal": "Estimado(a) {nombre}: Le informamos que su cuenta con {app_cliente} presenta un saldo pendiente de ${monto} y {dias_mora} días de mora. Favor de regularizar.",
+    "urgent": "⚠️ URGENTE: {nombre}, su cuenta con {app_cliente} lleva {dias_mora} días de mora. Saldo: ${monto}. Contáctenos de inmediato para evitar cargos adicionales.",
 }
 
 @api_router.get("/templates/{country}", response_model=List[Template])
@@ -681,6 +692,160 @@ async def import_contacts_from_file(file_id: str):
         await db.contacts.insert_many(docs)
     await add_log("success", "Import", f"Contactos importados desde {rec['original_filename']}: {inserted}", country)
     return {"inserted": inserted, "errors": errors}
+
+
+COUNTRY_DIAL_CODES = {
+    "MX": "+52",
+    "CO": "+57",
+    "PE": "+51",
+    "CL": "+56",
+}
+
+
+def normalize_phone(raw: str, dial_code: str) -> str:
+    """Normalize a phone: remove separators, strip leading zeros, prepend country code."""
+    if not raw:
+        return ""
+    digits = "".join(ch for ch in str(raw) if ch.isdigit() or ch == "+")
+    if digits.startswith("+"):
+        return digits
+    # remove any leading zeros
+    digits = digits.lstrip("0")
+    return f"{dial_code}{digits}"
+
+
+@api_router.post("/whatsapp/import")
+async def whatsapp_import_csv(
+    country: str = Form(...),
+    dial_code: Optional[str] = Form(None),
+    file: UploadFile = File(...),
+):
+    """Import a CSV of phones (without country code) → prepend dial code and store as contacts."""
+    country = country.upper()
+    if country not in VALID_COUNTRIES:
+        raise HTTPException(400, "País inválido")
+    code = (dial_code or COUNTRY_DIAL_CODES.get(country) or "+52").strip()
+    if not code.startswith("+"):
+        code = "+" + code
+
+    content = (await file.read()).decode("utf-8-sig", errors="ignore")
+    reader = csv.DictReader(io.StringIO(content))
+    inserted = 0
+    errors = 0
+    contacts = []
+    for row in reader:
+        try:
+            r = {k.strip().lower(): (v or "").strip() for k, v in row.items() if k}
+            nombre = r.get("nombre") or r.get("name") or r.get("cliente") or "Sin nombre"
+            raw_phone = (
+                r.get("telefono") or r.get("teléfono") or r.get("phone") or r.get("celular")
+                or r.get("numero") or r.get("número") or ""
+            )
+            if not raw_phone:
+                errors += 1
+                continue
+            phone = normalize_phone(raw_phone, code)
+            try:
+                mora = int(float(r.get("dias_mora") or r.get("dias") or r.get("mora") or "0"))
+            except Exception:
+                mora = 0
+            app_cliente = (
+                r.get("app_cliente") or r.get("app") or r.get("aplicacion") or r.get("aplicación") or ""
+            )
+            try:
+                monto = float(str(r.get("monto") or r.get("amount") or "0").replace(",", "").replace("$", "").strip() or 0)
+            except Exception:
+                monto = 0.0
+            c = Contact(
+                nombre=nombre,
+                telefono=phone,
+                monto=monto,
+                empresa=r.get("empresa") or "",
+                vencimiento=r.get("vencimiento") or "",
+                fecha=r.get("fecha") or "",
+                dias_mora=mora,
+                app_cliente=app_cliente,
+                country=country,
+            )
+            contacts.append(c.model_dump())
+            inserted += 1
+        except Exception:
+            errors += 1
+    if contacts:
+        await db.contacts.insert_many(contacts)
+    await add_log("success", "WhatsApp", f"CSV cargado con código {code}: {inserted} contactos", country)
+    return {"inserted": inserted, "errors": errors, "dial_code": code, "country": country}
+
+
+@api_router.get("/whatsapp/dial-codes")
+async def get_dial_codes():
+    return COUNTRY_DIAL_CODES
+
+
+@api_router.get("/whatsapp/qr/{country}")
+async def whatsapp_qr(country: str):
+    """Generate a QR code encoding the webhook connection info for this country.
+    User scans it with their WhatsApp automation service (Evolution API, WPPConnect, etc.)."""
+    import qrcode
+    import base64
+    country = country.upper()
+    cfg = await db.configs.find_one({"country": country}, {"_id": 0}) or {}
+    payload = {
+        "app": "cobranzas-xd",
+        "country": country,
+        "webhook": cfg.get("whatsapp_webhook_url", ""),
+        "token": cfg.get("whatsapp_api_key", ""),
+        "ts": now_iso(),
+    }
+    import json as _json
+    text = _json.dumps(payload)
+    qr = qrcode.QRCode(version=4, box_size=8, border=2)
+    qr.add_data(text)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="#E1FF00", back_color="#0A0A0F")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+    return {"qr_data_url": f"data:image/png;base64,{b64}", "payload": payload}
+
+
+@api_router.post("/whatsapp/connect/{country}")
+async def whatsapp_connect(country: str, payload: Dict[str, Any]):
+    """Mark WhatsApp as connected. Accepts { webhook_url, api_key, phone_number }."""
+    country = country.upper()
+    if country not in VALID_COUNTRIES:
+        raise HTTPException(400, "País inválido")
+    update = {
+        "whatsapp_webhook_url": payload.get("webhook_url", "").strip(),
+        "whatsapp_api_key": payload.get("api_key", "").strip(),
+        "whatsapp_phone": payload.get("phone_number", "").strip(),
+        "whatsapp_connected": True,
+        "updated_at": now_iso(),
+        "country": country,
+    }
+    await db.configs.update_one({"country": country}, {"$set": update}, upsert=True)
+    await add_log("success", "WhatsApp", f"Conectado: {update.get('whatsapp_phone') or 'sin número'}", country)
+    return {"connected": True, **update}
+
+
+@api_router.post("/whatsapp/disconnect/{country}")
+async def whatsapp_disconnect(country: str):
+    country = country.upper()
+    await db.configs.update_one({"country": country}, {"$set": {"whatsapp_connected": False}}, upsert=True)
+    await add_log("warn", "WhatsApp", "Desconectado", country)
+    return {"connected": False}
+
+
+@api_router.get("/whatsapp/status/{country}")
+async def whatsapp_status(country: str):
+    country = country.upper()
+    cfg = await db.configs.find_one({"country": country}, {"_id": 0}) or {}
+    return {
+        "connected": bool(cfg.get("whatsapp_connected", False)),
+        "phone": cfg.get("whatsapp_phone", ""),
+        "webhook_url": cfg.get("whatsapp_webhook_url", ""),
+        "has_key": bool(cfg.get("whatsapp_api_key", "")),
+    }
 
 
 @api_router.get("/")
