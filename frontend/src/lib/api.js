@@ -44,4 +44,20 @@ export const endpoints = {
   deleteScript: (id) => api.delete(`/scripts/${id}`).then((r) => r.data),
 
   testWhatsapp: (country) => api.post(`/whatsapp/test/${country}`).then((r) => r.data),
+
+  // Files / Storage
+  uploadFile: (file, { category = "other", country, note = "" } = {}) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("category", category);
+    if (country) fd.append("country", country);
+    if (note) fd.append("note", note);
+    return api.post(`/files/upload`, fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }).then((r) => r.data);
+  },
+  listFiles: (params) => api.get(`/files`, { params }).then((r) => r.data),
+  deleteFile: (id) => api.delete(`/files/${id}`).then((r) => r.data),
+  fileDownloadUrl: (id) => `${API}/files/${id}/download`,
+  importContactsFromFile: (id) => api.post(`/files/import-contacts/${id}`).then((r) => r.data),
 };

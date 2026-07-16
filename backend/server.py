@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Form, Response, Query
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -12,6 +12,8 @@ from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
+
+from storage import init_storage, put_object, get_object, guess_mime, APP_NAME
 
 
 ROOT_DIR = Path(__file__).parent
@@ -545,6 +547,142 @@ async def test_whatsapp(country: str):
                   f"Test conexión: {'OK' if connected else 'sin respuesta'}", country)
     return {"connected": connected, "status_code": r.status_code}
 
+# ---------- Files (Object Storage) ----------
+class FileRecord(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=make_id)
+    storage_path: str
+    original_filename: str
+    content_type: str
+    size: int
+    category: str = "other"  # csv, export, report, other
+    country: Optional[str] = None
+    note: Optional[str] = ""
+    is_deleted: bool = False
+    created_at: str = Field(default_factory=now_iso)
+
+
+@api_router.post("/files/upload", response_model=FileRecord)
+async def upload_file(
+    file: UploadFile = File(...),
+    category: str = Form("other"),
+    country: Optional[str] = Form(None),
+    note: Optional[str] = Form(""),
+):
+    data = await file.read()
+    ext = (file.filename or "file").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "bin"
+    path = f"{APP_NAME}/uploads/{(country or 'global').upper()}/{uuid.uuid4()}.{ext}"
+    content_type = file.content_type or guess_mime(file.filename or "")
+    try:
+        result = put_object(path, data, content_type)
+    except Exception as e:
+        await add_log("error", "Storage", f"Upload failed: {str(e)[:150]}", country)
+        raise HTTPException(500, f"Storage error: {str(e)[:200]}")
+
+    rec = FileRecord(
+        storage_path=result["path"],
+        original_filename=file.filename or "archivo",
+        content_type=content_type,
+        size=result.get("size", len(data)),
+        category=category,
+        country=(country or None) and country.upper(),
+        note=note or "",
+    )
+    await db.files.insert_one(rec.model_dump())
+    await add_log("success", "Storage", f"Archivo subido: {rec.original_filename} ({rec.size} bytes)", rec.country)
+    return rec
+
+
+@api_router.get("/files", response_model=List[FileRecord])
+async def list_files(country: Optional[str] = None, category: Optional[str] = None, limit: int = 200):
+    q: Dict[str, Any] = {"is_deleted": False}
+    if country and country.upper() != "ALL":
+        q["country"] = country.upper()
+    if category and category != "all":
+        q["category"] = category
+    docs = await db.files.find(q, {"_id": 0}).sort("created_at", -1).to_list(limit)
+    return [FileRecord(**d) for d in docs]
+
+
+@api_router.get("/files/{file_id}/download")
+async def download_file(file_id: str):
+    rec = await db.files.find_one({"id": file_id, "is_deleted": False}, {"_id": 0})
+    if not rec:
+        raise HTTPException(404, "Archivo no encontrado")
+    try:
+        data, ctype = get_object(rec["storage_path"])
+    except Exception as e:
+        raise HTTPException(500, f"Storage error: {str(e)[:200]}")
+    return Response(
+        content=data,
+        media_type=rec.get("content_type") or ctype,
+        headers={
+            "Content-Disposition": f'attachment; filename="{rec["original_filename"]}"',
+        },
+    )
+
+
+@api_router.delete("/files/{file_id}")
+async def delete_file(file_id: str):
+    rec = await db.files.find_one({"id": file_id, "is_deleted": False}, {"_id": 0})
+    if not rec:
+        raise HTTPException(404, "Not found")
+    await db.files.update_one({"id": file_id}, {"$set": {"is_deleted": True}})
+    await add_log("warn", "Storage", f"Archivo eliminado: {rec['original_filename']}", rec.get("country"))
+    return {"deleted": True}
+
+
+@api_router.post("/files/import-contacts/{file_id}")
+async def import_contacts_from_file(file_id: str):
+    """Import contacts from a previously uploaded CSV file."""
+    rec = await db.files.find_one({"id": file_id, "is_deleted": False}, {"_id": 0})
+    if not rec:
+        raise HTTPException(404, "Archivo no encontrado")
+    country = (rec.get("country") or "MX").upper()
+    if country not in VALID_COUNTRIES:
+        country = "MX"
+    try:
+        data, _ = get_object(rec["storage_path"])
+    except Exception as e:
+        raise HTTPException(500, f"Storage error: {str(e)[:200]}")
+
+    content = data.decode("utf-8-sig", errors="ignore")
+    reader = csv.DictReader(io.StringIO(content))
+    inserted = 0
+    errors = 0
+    docs = []
+    for row in reader:
+        try:
+            r = {k.strip().lower(): (v or "").strip() for k, v in row.items() if k}
+            nombre = r.get("nombre") or r.get("name") or r.get("cliente") or ""
+            telefono = r.get("telefono") or r.get("teléfono") or r.get("phone") or r.get("celular") or ""
+            monto_raw = r.get("monto") or r.get("amount") or "0"
+            try:
+                monto = float(str(monto_raw).replace(",", "").replace("$", "").strip() or 0)
+            except Exception:
+                monto = 0.0
+            if not nombre and not telefono:
+                errors += 1
+                continue
+            c = Contact(
+                nombre=nombre or "Sin nombre",
+                telefono=telefono,
+                monto=monto,
+                empresa=r.get("empresa") or "",
+                vencimiento=r.get("vencimiento") or "",
+                fecha=r.get("fecha") or "",
+                country=country,
+            )
+            docs.append(c.model_dump())
+            inserted += 1
+        except Exception:
+            errors += 1
+    if docs:
+        await db.contacts.insert_many(docs)
+    await add_log("success", "Import", f"Contactos importados desde {rec['original_filename']}: {inserted}", country)
+    return {"inserted": inserted, "errors": errors}
+
+
 @api_router.get("/")
 async def root():
     return {"status": "ok", "service": "Cobranzas Command Center"}
@@ -564,6 +702,15 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+@app.on_event("startup")
+async def startup_init_storage():
+    try:
+        init_storage()
+        logger.info("Object storage initialized")
+    except Exception as e:
+        logger.warning(f"Object storage init deferred: {e}")
+
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { toast } from "sonner";
-import { LayoutGrid, Users, MessageSquareText, BarChart3, Terminal, Settings, Radio, Sparkles } from "lucide-react";
+import { LayoutGrid, Users, MessageSquareText, BarChart3, Terminal, Settings, Radio, Sparkles, HardDrive } from "lucide-react";
 import { COUNTRIES, findCountry } from "@/lib/countries";
 import { endpoints } from "@/lib/api";
 import CountrySelector from "@/components/CountrySelector";
@@ -11,11 +11,13 @@ import ReportsView from "@/components/ReportsView";
 import ConfigView from "@/components/ConfigView";
 import ExecutionConsole from "@/components/ExecutionConsole";
 import WhatsAppIndicator from "@/components/WhatsAppIndicator";
+import FilesView from "@/components/FilesView";
 
 const NAV = [
   { key: "dashboard", label: "Panel", icon: LayoutGrid },
   { key: "contacts", label: "Contactos", icon: Users },
   { key: "templates", label: "Plantillas", icon: MessageSquareText },
+  { key: "files", label: "Archivos", icon: HardDrive },
   { key: "reports", label: "Reportes", icon: BarChart3 },
   { key: "config", label: "Configuración", icon: Settings },
   { key: "logs", label: "Consola", icon: Terminal },
@@ -197,6 +199,12 @@ export default function Dashboard() {
           {tab === "templates" && (
             <div data-testid="tab-templates">
               <TemplatesView country={country} />
+            </div>
+          )}
+
+          {tab === "files" && (
+            <div data-testid="tab-files">
+              <FilesView country={country} onChange={bump} />
             </div>
           )}
 
