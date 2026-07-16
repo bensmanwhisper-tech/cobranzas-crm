@@ -1,0 +1,83 @@
+{
+  "theme": "dark",
+  "archetype": "ARCHETYPE 2: THE PERFORMANCE PRO mixed with ARCHETYPE 5: LUXURY (Elite Command Center)",
+  "concept": "Turn a mechanical collections task into an elite, high-visibility 'Command Center' experience. High density data, ultra-modern dark mode (True Grey), and electric neon accents. It must feel like an advanced Bloomberg Terminal combined with the sleekness of Stripe.",
+  "typography": {
+    "headings": {
+      "family": "Outfit",
+      "import": "@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');",
+      "usage": "Use for all major headers, metrics numbers (e.g., Total Sent), and dashboard widget titles. Apply tight letter spacing (tracking-tight)."
+    },
+    "body": {
+      "family": "Manrope",
+      "import": "@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap');",
+      "usage": "Use for all data tables, labels, form inputs, and regular UI text. Clean and legible for high data density."
+    },
+    "mono": {
+      "family": "JetBrains Mono",
+      "import": "@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');",
+      "usage": "Use exclusively for the Execution Console/Logs, Variables in Templates (e.g., {nombre}), and numeric IDs."
+    }
+  },
+  "colors": {
+    "background": "#09090B",
+    "surface": "#18181B",
+    "surface_elevated": "#27272A",
+    "border": "rgba(255,255,255,0.08)",
+    "primary": "#E1FF00",
+    "primary_foreground": "#000000",
+    "text_main": "#FAFAFA",
+    "text_muted": "#A1A1AA",
+    "countries": {
+      "MX": {"bg": "rgba(16, 185, 129, 0.15)", "text": "#34D399", "border": "rgba(16, 185, 129, 0.3)", "label": "Mexico"},
+      "CO": {"bg": "rgba(250, 204, 21, 0.15)", "text": "#FDE047", "border": "rgba(250, 204, 21, 0.3)", "label": "Colombia"},
+      "PE": {"bg": "rgba(239, 68, 68, 0.15)", "text": "#F87171", "border": "rgba(239, 68, 68, 0.3)", "label": "Peru"},
+      "CL": {"bg": "rgba(59, 130, 246, 0.15)", "text": "#60A5FA", "border": "rgba(59, 130, 246, 0.3)", "label": "Chile"}
+    },
+    "status": {
+      "success": "#34D399",
+      "error": "#F87171",
+      "pending": "#FDE047",
+      "whatsapp_connected": "#22C55E",
+      "whatsapp_disconnected": "#EF4444"
+    }
+  },
+  "visual_enhancers": {
+    "glassmorphism": "Use backdrop-blur-xl bg-zinc-950/70 with a 1px border-white/10 for the floating action bar and sticky headers. No pure transparent backgrounds over content.",
+    "surfaces": "Rely on 1px subtle borders (border-white/10) and layered elevation (Zinc-950 base -> Zinc-900 cards -> Zinc-800 inputs).",
+    "glow_effects": "Use subtle ambient drop shadows for primary actions (e.g., drop-shadow-[0_0_15px_rgba(225,255,0,0.2)] for the main 'Start Campaign' button).",
+    "terminal_look": "The Execution Console must look like a hacker terminal: Deep black background (#000000), border-white/10, JetBrains Mono font, color-coded log lines (Green for sent, Red for error, Zinc-500 for timestamps)."
+  },
+  "grids_and_layouts": {
+    "app_structure": "Left: Collapsible minimalist Sidebar. Center: Main Workspace (Stats + High-Density Table). Right or Bottom Panel: Execution Console.",
+    "stats_row": "Mode B (High Density Grid). 4 columns (grid-cols-2 md:grid-cols-4) with gap-4. Cards have solid Zinc-900 backgrounds, minimal padding (p-4), and border-white/5.",
+    "data_table": "ULTRA-DENSE. The user handles 300 rows/day. Do not use bloated default Shadcn table padding. Use py-1.5 px-3 for table cells. Alternating row colors (Zinc-950 / Zinc-900) for fast scanning. Sticky header with backdrop-blur.",
+    "floating_action_bar": "When rows are selected, a glassmorphic bar slides up from the bottom (fixed bottom-8 left-1/2 -translate-x-1/2 z-50). It contains bulk actions like 'Send to X selected', 'Export', 'Cancel'."
+  },
+  "motion": {
+    "hover_states": "All interactive rows and buttons must have subtle color shifts (transition-colors duration-200).",
+    "buttons": "Primary actions should have a tactile active:scale-95 effect.",
+    "console_feed": "New log entries should appear instantly. Use a blinking cursor '_' at the bottom of the log to make it feel alive.",
+    "loaders": "Avoid generic circular spinners. Use an ASCII-style loader (e.g., [ ===   ]) or a pulsing neon status dot."
+  },
+  "components": {
+    "country_selector": "Top bar component. A segmented control or pill-shaped toggle group. When a country is selected, it glows with its specific neon color (from the colors.countries dictionary).",
+    "status_badge": "Small pill (px-2 py-0.5 text-xs rounded-full) with a pulsing dot indicator + text. Very minimalist.",
+    "variable_tag": "In the Message Template editor, variables like {nombre} or {monto} should look like code blocks (bg-zinc-800 text-zinc-300 font-mono px-1.5 py-0.5 rounded text-xs cursor-pointer hover:bg-zinc-700).",
+    "whatsapp_indicator": "Top right corner. A glowing green dot (animate-pulse) with text 'WA Conectado'. If disconnected, glowing red."
+  },
+  "icons": {
+    "library": "lucide-react",
+    "instruction": "Use stroke-width 1.5 or 2. Keep icons minimal. Avoid overloading the UI with unnecessary icons."
+  },
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "DO NOT use generic centered layouts or standard bloated SaaS designs. This must feel like an elite command center for high-volume operations.",
+    "Strictly follow the Dark Theme 'True Grey' approach. Base background is #09090B, cards are #18181B. DO NOT use pure white backgrounds anywhere.",
+    "For the Data Table, implement a dense layout (py-1.5 px-3). High volume users need to see 20+ rows at once without scrolling heavily.",
+    "Make the Execution Console/Logs visually distinct: like a true terminal interface. It should feel 'fun' and 'hacker-like' to watch messages go out.",
+    "Integrate the Country Selector deeply into the UI. Changing the country should instantly filter the table and change the accent colors of relevant widgets.",
+    "Add data-testid attributes to all buttons, inputs, tabs, and table rows to ensure automated testing reliability.",
+    "Do not apply `transition: all` globally. Target specific properties like `transition-colors` or `transition-transform` to prevent breaking complex layout animations.",
+    "Use Shadcn UI primitives but override their padding and background colors to match the ultra-dense True Grey dark theme."
+  ]
+}
