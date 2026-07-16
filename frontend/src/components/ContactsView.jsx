@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { toast } from "sonner";
 import { CheckSquare, Square, Upload, Trash2, Send, Eye, Filter, RefreshCw, Plus, Sparkles } from "lucide-react";
-import { COUNTRIES, findCountry, TEMPLATE_KINDS } from "@/lib/countries";
+import { COUNTRIES, findCountry, TEMPLATE_KINDS, ESTADOS, findEstado } from "@/lib/countries";
 import { endpoints } from "@/lib/api";
+import ClientDetail from "@/components/ClientDetail";
 
 const STATUS_META = {
   pending: { label: "Pendiente", color: "#FDE047", bg: "rgba(250,204,21,0.12)" },
@@ -12,11 +13,11 @@ const STATUS_META = {
 
 export default function ContactsView({ country, onChange, embedded = false }) {
   const [contacts, setContacts] = useState([]);
-  const [filterStatus, setFilterStatus] = useState("all");
+  const [filterEstado, setFilterEstado] = useState("all");
   const [filterCountry, setFilterCountry] = useState(country);
   const [selected, setSelected] = useState(new Set());
   const [loading, setLoading] = useState(false);
-  const [preview, setPreview] = useState(null);
+  const [detail, setDetail] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
   const [templateKind, setTemplateKind] = useState("default");
   const fileRef = useRef(null);
@@ -28,13 +29,13 @@ export default function ContactsView({ country, onChange, embedded = false }) {
     try {
       const data = await endpoints.listContacts({
         country: filterCountry === "ALL" ? undefined : filterCountry,
-        status: filterStatus === "all" ? undefined : filterStatus,
+        estado: filterEstado === "all" ? undefined : filterEstado,
       });
       setContacts(data);
     } finally {
       setLoading(false);
     }
-  }, [filterCountry, filterStatus]);
+  }, [filterCountry, filterEstado]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -115,21 +116,6 @@ export default function ContactsView({ country, onChange, embedded = false }) {
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2 p-3 bg-[#101013] border border-white/5 rounded-lg">
-        <div className="flex items-center gap-1 bg-[#0B0B0F] rounded-md p-1 border border-white/5">
-          {["all", "pending", "sent", "error"].map((s) => (
-            <button
-              key={s}
-              data-testid={`filter-status-${s}`}
-              onClick={() => setFilterStatus(s)}
-              className={`px-2.5 py-1 text-xs rounded transition-colors ${
-                filterStatus === s ? "bg-white/10 text-white" : "text-zinc-400 hover:text-white"
-              }`}
-            >
-              {s === "all" ? "Todos" : STATUS_META[s].label + "s"}
-            </button>
-          ))}
-        </div>
-
         <div className="flex items-center gap-1 bg-[#0B0B0F] rounded-md p-1 border border-white/5">
           <button
             data-testid="filter-country-ALL"
@@ -227,18 +213,19 @@ export default function ContactsView({ country, onChange, embedded = false }) {
                 </th>
                 <th className="py-2.5 px-3">Nombre</th>
                 <th className="py-2.5 px-3">Teléfono</th>
-                <th className="py-2.5 px-3">Días mora</th>
-                <th className="py-2.5 px-3">App</th>
+                <th className="py-2.5 px-3">Mora</th>
+                <th className="py-2.5 px-3">Solicitante</th>
                 <th className="py-2.5 px-3">Monto</th>
+                <th className="py-2.5 px-3">Recup.</th>
+                <th className="py-2.5 px-3">SMS</th>
                 <th className="py-2.5 px-3">País</th>
                 <th className="py-2.5 px-3">Estado</th>
-                <th className="py-2.5 px-3 w-10"></th>
               </tr>
             </thead>
             <tbody className="font-mono text-[13px]">
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="py-16 text-center text-zinc-500 font-sans">
+                  <td colSpan={10} className="py-16 text-center text-zinc-500 font-sans">
                     {loading ? (
                       <span className="ascii-loader" />
                     ) : (
@@ -252,17 +239,19 @@ export default function ContactsView({ country, onChange, embedded = false }) {
               )}
               {filtered.map((c, i) => {
                 const cty = findCountry(c.country);
-                const st = STATUS_META[c.status] || STATUS_META.pending;
+                const est = findEstado(c.estado || "pendiente");
                 const isSel = selected.has(c.id);
                 const mora = c.dias_mora || 0;
                 const moraColor = mora > 60 ? "#F87171" : mora > 30 ? "#FDE047" : "#34D399";
+                const recPct = c.monto ? Math.min(100, ((c.monto_recuperado || 0) / c.monto) * 100) : 0;
                 return (
                   <tr
                     key={c.id}
-                    className={`row-hover border-b border-white/[0.03] ${i % 2 === 0 ? "bg-transparent" : "bg-white/[0.015]"} ${isSel ? "bg-[#E1FF00]/[0.04]" : ""}`}
+                    onClick={() => setDetail(c)}
+                    className={`row-hover cursor-pointer border-b border-white/[0.03] ${i % 2 === 0 ? "bg-transparent" : "bg-white/[0.015]"} ${isSel ? "bg-[#E1FF00]/[0.04]" : ""}`}
                     data-testid={`contact-row-${c.id}`}
                   >
-                    <td className="py-1.5 px-3">
+                    <td className="py-1.5 px-3" onClick={(e) => e.stopPropagation()}>
                       <button onClick={() => toggleOne(c.id)} className="grid place-items-center">
                         {isSel ? <CheckSquare size={14} className="text-[#E1FF00]" /> : <Square size={14} className="text-zinc-500" />}
                       </button>
@@ -277,12 +266,27 @@ export default function ContactsView({ country, onChange, embedded = false }) {
                         {mora}d
                       </span>
                     </td>
-                    <td className="py-1.5 px-3 text-zinc-300 font-sans">
-                      {c.app_cliente ? (
-                        <span className="px-1.5 py-0.5 rounded bg-white/5 text-xs font-mono">{c.app_cliente}</span>
+                    <td className="py-1.5 px-3 text-zinc-300 font-sans max-w-[180px] truncate" title={c.solicitante || c.app_cliente}>
+                      {c.solicitante || c.app_cliente ? (
+                        <span className="px-1.5 py-0.5 rounded bg-white/5 text-xs font-mono truncate inline-block max-w-full">{c.solicitante || c.app_cliente}</span>
                       ) : <span className="text-zinc-600">—</span>}
                     </td>
                     <td className="py-1.5 px-3 text-white">${Number(c.monto).toLocaleString()}</td>
+                    <td className="py-1.5 px-3">
+                      {(c.monto_recuperado || 0) > 0 ? (
+                        <div className="min-w-[80px]">
+                          <div className="text-emerald-400 text-xs font-bold">${Number(c.monto_recuperado).toLocaleString()}</div>
+                          <div className="h-1 bg-white/5 rounded-full mt-0.5 overflow-hidden">
+                            <div className="h-full bg-emerald-400" style={{ width: `${recPct}%` }} />
+                          </div>
+                        </div>
+                      ) : <span className="text-zinc-600 text-xs">—</span>}
+                    </td>
+                    <td className="py-1.5 px-3 text-center">
+                      {c.sms_enviado ? (
+                        <span className="text-emerald-400 font-bold" title="SMS enviado">✓</span>
+                      ) : <span className="text-zinc-700">—</span>}
+                    </td>
                     <td className="py-1.5 px-3">
                       <span
                         className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-sans font-semibold"
@@ -294,21 +298,11 @@ export default function ContactsView({ country, onChange, embedded = false }) {
                     <td className="py-1.5 px-3">
                       <span
                         className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full font-sans font-semibold inline-flex items-center gap-1"
-                        style={{ background: st.bg, color: st.color }}
+                        style={{ background: est.bg, color: est.color }}
+                        title={est.label}
                       >
-                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: st.color }} />
-                        {st.label}
+                        {est.icon} {est.label}
                       </span>
-                    </td>
-                    <td className="py-1.5 px-3">
-                      <button
-                        onClick={() => setPreview(c)}
-                        data-testid={`preview-${c.id}`}
-                        className="text-zinc-500 hover:text-white"
-                        title="Vista previa"
-                      >
-                        <Eye size={13} />
-                      </button>
                     </td>
                   </tr>
                 );
@@ -356,11 +350,17 @@ export default function ContactsView({ country, onChange, embedded = false }) {
         </div>
       )}
 
-      {/* Preview modal */}
-      {preview && (
-        <Modal onClose={() => setPreview(null)} title="Vista previa del contacto">
-          <PreviewCard contact={preview} />
-        </Modal>
+      {/* Client detail drawer */}
+      {detail && (
+        <ClientDetail
+          contact={detail}
+          onClose={() => setDetail(null)}
+          onChanged={async (c) => {
+            setDetail(c);
+            await load();
+            onChange?.();
+          }}
+        />
       )}
 
       {/* Add contact modal */}

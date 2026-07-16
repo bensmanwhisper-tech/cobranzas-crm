@@ -13,6 +13,7 @@ import ExecutionConsole from "@/components/ExecutionConsole";
 import WhatsAppIndicator from "@/components/WhatsAppIndicator";
 import FilesView from "@/components/FilesView";
 import WhatsAppCenter from "@/components/WhatsAppCenter";
+import RecoveryPanel from "@/components/RecoveryPanel";
 
 const NAV = [
   { key: "dashboard", label: "Panel", icon: LayoutGrid },
@@ -180,6 +181,7 @@ export default function Dashboard() {
                 <p className="text-zinc-400 text-sm mt-1">Vista consolidada de operaciones a través de los 4 países.</p>
               </div>
               <StatsCards summary={summary} />
+              <RecoveryPanel summary={summary} />
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2">
                   <ContactsView

@@ -18,6 +18,14 @@ export const endpoints = {
   updateContact: (id, patch) => api.patch(`/contacts/${id}`, patch).then((r) => r.data),
   deleteContact: (id) => api.delete(`/contacts/${id}`).then((r) => r.data),
   bulkDeleteContacts: (ids) => api.post(`/contacts/bulk-delete`, { ids }).then((r) => r.data),
+  // Notes / Reminders / Recovered
+  addNote: (id, text, author) => api.post(`/contacts/${id}/notes`, { text, author }).then((r) => r.data),
+  deleteNote: (id, noteId) => api.delete(`/contacts/${id}/notes/${noteId}`).then((r) => r.data),
+  addReminder: (id, text, due_at) => api.post(`/contacts/${id}/reminders`, { text, due_at }).then((r) => r.data),
+  toggleReminder: (id, reminderId) => api.patch(`/contacts/${id}/reminders/${reminderId}/toggle`).then((r) => r.data),
+  deleteReminder: (id, reminderId) => api.delete(`/contacts/${id}/reminders/${reminderId}`).then((r) => r.data),
+  setRecovered: (id, monto_recuperado, marcar_pagado = false) =>
+    api.patch(`/contacts/${id}/recovered`, { monto_recuperado, marcar_pagado }).then((r) => r.data),
   importCsv: (country, file) => {
     const fd = new FormData();
     fd.append("country", country);

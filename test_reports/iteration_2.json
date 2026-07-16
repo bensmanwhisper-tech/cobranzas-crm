@@ -1,0 +1,38 @@
+{
+  "summary": "Backend testing for bug fix + new gestión features. Created /app/backend/tests/test_bug_fix_and_new_endpoints.py with 12 tests covering the real-CSV bug fix (/api/contacts/import + /api/whatsapp/import extracting dias_mora, solicitante, sms✅, formulario_guardado, hora), notes CRUD, reminders lifecycle (toggle+delete), recovered amount (partial/pagado/zero), PATCH estado (valid+400 invalid), medio_contacto, GET /contacts?estado filter, and enriched /reports/summary. All 12 new tests pass. Also re-ran previous 13 regression tests — all pass. TOTAL: 25/25 tests passing. Bug fix VERIFIED with real CSV: VICTOR MANUEL row now correctly imports dias_mora=8, solicitante='Rico Préstamo(50005)...', sms_enviado=true, formulario_guardado=true, hora='14:23:04', monto=184080.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/contacts?country=CL", "issue": "No dedup by phone on repeated CSV imports — real CSV importado 2 veces via /contacts/import y /whatsapp/import inserta contactos duplicados. Considera dedup por (country, telefono) o un flag upsert=true."},
+      {"endpoint": "PATCH /api/contacts/{id}/recovered", "issue": "Cuando monto_recuperado=0, el estado se mantiene (correcto). Pero si un contacto ya estaba 'pagado' y se envía 0, se queda 'pagado' — puede ser inesperado. Considera permitir 'resetear' explícitamente vía marcar_pagado=false."},
+      {"endpoint": "POST /api/contacts/{id}/notes y /reminders", "issue": "No hay límite de tamaño de text ni validación de longitud. Un cliente malicioso podría inflar el documento MongoDB. Considera max_length en Pydantic."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_bug_fix_and_new_endpoints.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_bug_fix.xml"
+  ],
+  "action_items": [
+    "(Opcional) Agregar dedup por (country, telefono) en imports para evitar duplicados en re-uploads.",
+    "(Opcional) Validar tamaño de texto en notes/reminders (max_length).",
+    "(Opcional) Extraer parse_row_to_contact + CSV loop en un helper compartido (DRY) — 3 endpoints duplican ~15 líneas cada uno."
+  ],
+  "critical_code_review_comments": [
+    "server.py ahora tiene 1082 líneas — supera el umbral de 700. RECOMENDADO dividir en routers: contacts_router.py (contacts + notes + reminders + recovered), whatsapp_router.py, files_router.py, reports_router.py, templates_router.py.",
+    "Duplicación en 3 endpoints (import_contacts, whatsapp_import_csv, import_contacts_from_file): mismo loop csv.DictReader → parse_row_to_contact → insert_many. Extraer a helper _bulk_import_csv(content, country, dial_code=None).",
+    "parse_row_to_contact retorna Contact SIN validar country contra VALID_COUNTRIES cuando dial_code=None y country ya viene validado por el endpoint. OK, pero doc-string podría aclararlo.",
+    "PATCH /contacts/{id}/recovered: la lógica prioridad de estado (payload.marcar_pagado OR monto>=total) → pagado; elif >0 → parcial. NO cubre el caso 'monto_recuperado negativo'. Considera validar payload.monto_recuperado >= 0 con Pydantic Field(ge=0).",
+    "add_note/add_reminder/toggle_reminder/delete_note/delete_reminder: cada uno hace 2 queries (update + find_one). Considera usar find_one_and_update con return_document=AFTER para reducir round-trips.",
+    "ContactUpdate.medio_contacto acepta cualquier string — sin validación contra un enum {whatsapp,sms,llamada,email,presencial}. Podrías crear un set MEDIOS_CONTACTO similar a CONTACT_ESTADOS.",
+    "Pruebas OK y datos limpiados correctamente para test_recovered_*/test_patch_* (via delete). Sin embargo el bug-fix import test deja ~15 filas del CSV real en CL (no cleanup). Fine para debugging, pero considera un limpiado explícito en un fixture teardown."
+  ],
+  "updated_files": ["/app/backend/tests/test_bug_fix_and_new_endpoints.py"],
+  "success_rate": {"backend": "100% (25/25)", "frontend": "n/a"},
+  "test_credentials": "N/A — app sin autenticación.",
+  "seed_data_creation": "Import del CSV real 2x (una via /contacts/import y otra via /whatsapp/import) — dejó ~30 contactos CL residuales en la DB (VICTOR MANUEL, CARLOS CRISTIAN, etc). Contactos TEST_* creados en tests de notas/recordatorios/estado se eliminan automáticamente vía fixture teardown.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Suite completa ahora: backend_test.py (13 regresión) + test_bug_fix_and_new_endpoints.py (12 nuevas). Ejecutar: pytest /app/backend/tests/ -v. El CSV real se cachea en /tmp/informe.csv. Bug fix del usuario VERIFICADO: parse_row_to_contact extrae correctamente dias_mora/solicitante/sms/formulario_guardado/hora del CSV real. _bool_check() reconoce '✅' correctamente. Nuevos endpoints (notes/reminders/recovered/estado filter/enriched summary) todos funcionan y devuelven el Contact completo tras cada mutación."
+}

@@ -35,6 +35,7 @@ def make_id() -> str:
 
 VALID_COUNTRIES = {"MX", "CO", "PE", "CL"}
 VALID_STATUS = {"pending", "sent", "error"}
+CONTACT_ESTADOS = {"pendiente", "pagado", "sin_contacto", "parcial"}
 
 # ---------- Models ----------
 class CountryConfig(BaseModel):
@@ -50,6 +51,21 @@ class CountryConfig(BaseModel):
     whatsapp_connected: Optional[bool] = False
     updated_at: Optional[str] = None
 
+class ContactNote(BaseModel):
+    id: str = Field(default_factory=make_id)
+    ts: str = Field(default_factory=now_iso)
+    text: str
+    author: Optional[str] = "operador"
+
+
+class ContactReminder(BaseModel):
+    id: str = Field(default_factory=make_id)
+    ts: str = Field(default_factory=now_iso)
+    due_at: Optional[str] = None
+    text: str
+    done: bool = False
+
+
 class Contact(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=make_id)
@@ -57,13 +73,24 @@ class Contact(BaseModel):
     telefono: str
     monto: float = 0.0
     empresa: Optional[str] = ""
+    solicitante: Optional[str] = ""       # institución que otorgó el préstamo (del CSV)
     vencimiento: Optional[str] = ""
     fecha: Optional[str] = ""
+    hora: Optional[str] = ""              # hora del registro (del CSV)
     dias_mora: int = 0
     app_cliente: Optional[str] = ""
     country: str
-    status: str = "pending"  # pending, sent, error
+    # Send tracking (canal técnico)
+    status: str = "pending"                # pending, sent, error
     last_error: Optional[str] = ""
+    sms_enviado: bool = False              # del CSV: sms ✅
+    formulario_guardado: bool = False      # del CSV: formulario_guardado ✅
+    # Gestión de cobranza (nuevo)
+    estado: str = "pendiente"              # pendiente | pagado | sin_contacto | parcial
+    monto_recuperado: float = 0.0
+    medio_contacto: Optional[str] = ""     # whatsapp | sms | llamada | email | presencial
+    notas: List[ContactNote] = Field(default_factory=list)
+    recordatorios: List[ContactReminder] = Field(default_factory=list)
     created_at: str = Field(default_factory=now_iso)
     updated_at: str = Field(default_factory=now_iso)
 
@@ -72,8 +99,10 @@ class ContactCreate(BaseModel):
     telefono: str
     monto: float = 0.0
     empresa: Optional[str] = ""
+    solicitante: Optional[str] = ""
     vencimiento: Optional[str] = ""
     fecha: Optional[str] = ""
+    hora: Optional[str] = ""
     dias_mora: int = 0
     app_cliente: Optional[str] = ""
     country: str
@@ -82,12 +111,18 @@ class ContactUpdate(BaseModel):
     nombre: Optional[str] = None
     telefono: Optional[str] = None
     monto: Optional[float] = None
+    monto_recuperado: Optional[float] = None
     empresa: Optional[str] = None
+    solicitante: Optional[str] = None
     vencimiento: Optional[str] = None
     fecha: Optional[str] = None
     dias_mora: Optional[int] = None
     app_cliente: Optional[str] = None
     status: Optional[str] = None
+    estado: Optional[str] = None
+    medio_contacto: Optional[str] = None
+    sms_enviado: Optional[bool] = None
+    formulario_guardado: Optional[bool] = None
 
 class Template(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -193,12 +228,19 @@ async def list_configs():
 
 # ---------- Contacts ----------
 @api_router.get("/contacts", response_model=List[Contact])
-async def list_contacts(country: Optional[str] = None, status: Optional[str] = None, limit: int = 500):
+async def list_contacts(
+    country: Optional[str] = None,
+    status: Optional[str] = None,
+    estado: Optional[str] = None,
+    limit: int = 500,
+):
     q: Dict[str, Any] = {}
     if country and country.upper() != "ALL":
         q["country"] = country.upper()
     if status and status != "all":
         q["status"] = status
+    if estado and estado != "all":
+        q["estado"] = estado
     docs = await db.contacts.find(q, {"_id": 0}).sort("created_at", -1).to_list(limit)
     return [Contact(**d) for d in docs]
 
@@ -221,7 +263,115 @@ async def update_contact(contact_id: str, upd: ContactUpdate):
     patch["updated_at"] = now_iso()
     if patch.get("status") and patch["status"] not in VALID_STATUS:
         raise HTTPException(400, "Invalid status")
+    if patch.get("estado") and patch["estado"] not in CONTACT_ESTADOS:
+        raise HTTPException(400, "Invalid estado")
     await db.contacts.update_one({"id": contact_id}, {"$set": patch})
+    updated = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
+    if patch.get("estado"):
+        await add_log("info", "User", f"Estado→{patch['estado']}: {existing.get('nombre')}", existing.get("country"))
+    return Contact(**updated)
+
+
+# ---- Notes ----
+class NoteCreate(BaseModel):
+    text: str
+    author: Optional[str] = "operador"
+
+
+@api_router.post("/contacts/{contact_id}/notes", response_model=Contact)
+async def add_note(contact_id: str, payload: NoteCreate):
+    existing = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    note = ContactNote(text=payload.text, author=payload.author or "operador")
+    await db.contacts.update_one(
+        {"id": contact_id},
+        {"$push": {"notas": note.model_dump()}, "$set": {"updated_at": now_iso()}},
+    )
+    await add_log("info", "User", f"Nota agregada a {existing.get('nombre')}", existing.get("country"))
+    updated = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
+    return Contact(**updated)
+
+
+@api_router.delete("/contacts/{contact_id}/notes/{note_id}", response_model=Contact)
+async def delete_note(contact_id: str, note_id: str):
+    await db.contacts.update_one(
+        {"id": contact_id},
+        {"$pull": {"notas": {"id": note_id}}, "$set": {"updated_at": now_iso()}},
+    )
+    updated = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
+    if not updated:
+        raise HTTPException(404, "Not found")
+    return Contact(**updated)
+
+
+# ---- Reminders ----
+class ReminderCreate(BaseModel):
+    text: str
+    due_at: Optional[str] = None
+
+
+@api_router.post("/contacts/{contact_id}/reminders", response_model=Contact)
+async def add_reminder(contact_id: str, payload: ReminderCreate):
+    existing = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    r = ContactReminder(text=payload.text, due_at=payload.due_at)
+    await db.contacts.update_one(
+        {"id": contact_id},
+        {"$push": {"recordatorios": r.model_dump()}, "$set": {"updated_at": now_iso()}},
+    )
+    await add_log("info", "User", f"Recordatorio: {existing.get('nombre')}", existing.get("country"))
+    updated = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
+    return Contact(**updated)
+
+
+@api_router.patch("/contacts/{contact_id}/reminders/{reminder_id}/toggle", response_model=Contact)
+async def toggle_reminder(contact_id: str, reminder_id: str):
+    existing = await db.contacts.find_one({"id": contact_id, "recordatorios.id": reminder_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    current = next((r for r in existing.get("recordatorios", []) if r["id"] == reminder_id), None)
+    new_done = not (current and current.get("done", False))
+    await db.contacts.update_one(
+        {"id": contact_id, "recordatorios.id": reminder_id},
+        {"$set": {"recordatorios.$.done": new_done, "updated_at": now_iso()}},
+    )
+    updated = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
+    return Contact(**updated)
+
+
+@api_router.delete("/contacts/{contact_id}/reminders/{reminder_id}", response_model=Contact)
+async def delete_reminder(contact_id: str, reminder_id: str):
+    await db.contacts.update_one(
+        {"id": contact_id},
+        {"$pull": {"recordatorios": {"id": reminder_id}}, "$set": {"updated_at": now_iso()}},
+    )
+    updated = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
+    if not updated:
+        raise HTTPException(404, "Not found")
+    return Contact(**updated)
+
+
+# ---- Recovered amount ----
+class RecoveryPayload(BaseModel):
+    monto_recuperado: float
+    marcar_pagado: bool = False
+
+
+@api_router.patch("/contacts/{contact_id}/recovered", response_model=Contact)
+async def set_recovered(contact_id: str, payload: RecoveryPayload):
+    existing = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(404, "Not found")
+    monto = existing.get("monto", 0.0) or 0.0
+    upd = {"monto_recuperado": payload.monto_recuperado, "updated_at": now_iso()}
+    if payload.marcar_pagado or payload.monto_recuperado >= monto:
+        upd["estado"] = "pagado"
+    elif payload.monto_recuperado > 0:
+        upd["estado"] = "parcial"
+    await db.contacts.update_one({"id": contact_id}, {"$set": upd})
+    await add_log("success", "Recuperación", f"${payload.monto_recuperado} recuperado de {existing.get('nombre')}", existing.get("country"))
     updated = await db.contacts.find_one({"id": contact_id}, {"_id": 0})
     return Contact(**updated)
 
@@ -239,6 +389,62 @@ async def bulk_delete_contacts(payload: Dict[str, List[str]]):
     await add_log("warn", "User", f"Se eliminaron {res.deleted_count} contactos")
     return {"deleted": res.deleted_count}
 
+def parse_row_to_contact(r: Dict[str, str], country: str, dial_code: Optional[str] = None) -> Optional[Contact]:
+    """Parse a CSV row into a Contact. Supports all known columns of the real CSV format."""
+    nombre = r.get("nombre") or r.get("name") or r.get("cliente") or ""
+    raw_phone = (
+        r.get("telefono") or r.get("teléfono") or r.get("phone") or r.get("celular")
+        or r.get("numero") or r.get("número") or ""
+    )
+    if not nombre and not raw_phone:
+        return None
+    telefono = normalize_phone(raw_phone, dial_code) if dial_code else raw_phone
+
+    def _num(v):
+        try:
+            return float(str(v).replace(",", "").replace("$", "").strip() or 0)
+        except Exception:
+            return 0.0
+
+    def _int(v):
+        try:
+            return int(float(str(v).strip() or 0))
+        except Exception:
+            return 0
+
+    def _bool_check(v):
+        if v is None:
+            return False
+        s = str(v).strip().lower()
+        return s in {"✅", "true", "yes", "sí", "si", "1", "x", "ok", "checked"}
+
+    monto = _num(r.get("monto") or r.get("amount") or "0")
+    dias_mora = _int(r.get("dias_mora") or r.get("dias") or r.get("mora") or "0")
+    # Aplicación / prestamista
+    solicitante = (
+        r.get("solicitante") or r.get("institucion") or r.get("institución") or ""
+    )
+    app_cliente = (
+        r.get("app_cliente") or r.get("app") or r.get("aplicacion") or r.get("aplicación")
+        or solicitante
+    )
+    return Contact(
+        nombre=nombre or "Sin nombre",
+        telefono=telefono,
+        monto=monto,
+        empresa=r.get("empresa") or r.get("company") or "",
+        solicitante=solicitante,
+        vencimiento=r.get("vencimiento") or r.get("due") or "",
+        fecha=r.get("fecha") or r.get("date") or "",
+        hora=r.get("hora") or r.get("time") or "",
+        dias_mora=dias_mora,
+        app_cliente=app_cliente,
+        sms_enviado=_bool_check(r.get("sms")),
+        formulario_guardado=_bool_check(r.get("formulario_guardado") or r.get("formulario")),
+        country=country,
+    )
+
+
 @api_router.post("/contacts/import")
 async def import_contacts(country: str = Form(...), file: UploadFile = File(...)):
     country = country.upper()
@@ -252,27 +458,11 @@ async def import_contacts(country: str = Form(...), file: UploadFile = File(...)
     docs = []
     for row in reader:
         try:
-            # normalize keys (lowercase, no spaces)
             r = {k.strip().lower(): (v or "").strip() for k, v in row.items() if k}
-            nombre = r.get("nombre") or r.get("name") or r.get("cliente") or ""
-            telefono = r.get("telefono") or r.get("teléfono") or r.get("phone") or r.get("celular") or ""
-            monto_raw = r.get("monto") or r.get("amount") or "0"
-            try:
-                monto = float(str(monto_raw).replace(",", "").replace("$", "").strip() or 0)
-            except Exception:
-                monto = 0.0
-            if not nombre and not telefono:
+            c = parse_row_to_contact(r, country)
+            if not c:
                 errors += 1
                 continue
-            c = Contact(
-                nombre=nombre or "Sin nombre",
-                telefono=telefono,
-                monto=monto,
-                empresa=r.get("empresa") or r.get("company") or "",
-                vencimiento=r.get("vencimiento") or r.get("due") or "",
-                fecha=r.get("fecha") or r.get("date") or "",
-                country=country,
-            )
             docs.append(c.model_dump())
             inserted += 1
         except Exception:
@@ -475,6 +665,26 @@ async def reports_summary():
     async for doc in db.dispatches.aggregate(pipeline_channel):
         channel_stats[doc["_id"]] = {"total": doc["total"], "sent": doc["sent"], "errors": doc["errors"]}
 
+    # global money aggregates
+    money = {"debt": 0.0, "recovered": 0.0}
+    async for doc in db.contacts.aggregate([
+        {"$group": {
+            "_id": None,
+            "debt": {"$sum": {"$ifNull": ["$monto", 0]}},
+            "recovered": {"$sum": {"$ifNull": ["$monto_recuperado", 0]}},
+        }}
+    ]):
+        money = {"debt": doc.get("debt", 0.0), "recovered": doc.get("recovered", 0.0)}
+
+    # global sms counter (from CSV column)
+    sms_from_csv = await db.contacts.count_documents({"sms_enviado": True})
+    formulario_ok = await db.contacts.count_documents({"formulario_guardado": True})
+
+    # estado counters (gestión)
+    estado_counts = {"pendiente": 0, "pagado": 0, "sin_contacto": 0, "parcial": 0}
+    for e in list(estado_counts.keys()):
+        estado_counts[e] = await db.contacts.count_documents({"estado": e})
+
     # per-country
     per_country = []
     for c in VALID_COUNTRIES:
@@ -482,6 +692,22 @@ async def reports_summary():
         p = await db.contacts.count_documents({"country": c, "status": "pending"})
         s = await db.contacts.count_documents({"country": c, "status": "sent"})
         e = await db.contacts.count_documents({"country": c, "status": "error"})
+        sms_c = await db.contacts.count_documents({"country": c, "sms_enviado": True})
+        pagado_c = await db.contacts.count_documents({"country": c, "estado": "pagado"})
+        parcial_c = await db.contacts.count_documents({"country": c, "estado": "parcial"})
+        sin_contacto_c = await db.contacts.count_documents({"country": c, "estado": "sin_contacto"})
+        # per country money
+        m = {"debt": 0.0, "recovered": 0.0}
+        async for doc in db.contacts.aggregate([
+            {"$match": {"country": c}},
+            {"$group": {
+                "_id": None,
+                "debt": {"$sum": {"$ifNull": ["$monto", 0]}},
+                "recovered": {"$sum": {"$ifNull": ["$monto_recuperado", 0]}},
+            }}
+        ]):
+            m = {"debt": doc.get("debt", 0.0), "recovered": doc.get("recovered", 0.0)}
+
         per_country.append({
             "country": c,
             "total": total,
@@ -489,11 +715,19 @@ async def reports_summary():
             "sent": s,
             "errors": e,
             "success_rate": round((s / total) * 100, 1) if total else 0.0,
+            "sms_ok": sms_c,
+            "debt": m["debt"],
+            "recovered": m["recovered"],
+            "recovery_rate": round((m["recovered"] / m["debt"]) * 100, 1) if m["debt"] else 0.0,
+            "pagado": pagado_c,
+            "parcial": parcial_c,
+            "sin_contacto": sin_contacto_c,
         })
 
     total_sent_dispatches = sum(v["sent"] for v in channel_stats.values()) or sent
     total_all = sum(v["total"] for v in channel_stats.values()) or (sent + errors)
     success_rate = round((total_sent_dispatches / total_all) * 100, 1) if total_all else 0.0
+    recovery_rate = round((money["recovered"] / money["debt"]) * 100, 1) if money["debt"] else 0.0
 
     return {
         "total_contacts": total_contacts,
@@ -503,6 +737,13 @@ async def reports_summary():
         "total_sms": channel_stats.get("sms", {}).get("sent", 0),
         "total_whatsapp": channel_stats.get("whatsapp", {}).get("sent", 0),
         "success_rate": success_rate,
+        # New KPIs
+        "total_debt": money["debt"],
+        "total_recovered": money["recovered"],
+        "recovery_rate": recovery_rate,
+        "sms_from_csv": sms_from_csv,
+        "formulario_guardado": formulario_ok,
+        "estado_counts": estado_counts,
         "per_country": per_country,
     }
 
@@ -665,25 +906,10 @@ async def import_contacts_from_file(file_id: str):
     for row in reader:
         try:
             r = {k.strip().lower(): (v or "").strip() for k, v in row.items() if k}
-            nombre = r.get("nombre") or r.get("name") or r.get("cliente") or ""
-            telefono = r.get("telefono") or r.get("teléfono") or r.get("phone") or r.get("celular") or ""
-            monto_raw = r.get("monto") or r.get("amount") or "0"
-            try:
-                monto = float(str(monto_raw).replace(",", "").replace("$", "").strip() or 0)
-            except Exception:
-                monto = 0.0
-            if not nombre and not telefono:
+            c = parse_row_to_contact(r, country)
+            if not c:
                 errors += 1
                 continue
-            c = Contact(
-                nombre=nombre or "Sin nombre",
-                telefono=telefono,
-                monto=monto,
-                empresa=r.get("empresa") or "",
-                vencimiento=r.get("vencimiento") or "",
-                fecha=r.get("fecha") or "",
-                country=country,
-            )
             docs.append(c.model_dump())
             inserted += 1
         except Exception:
@@ -736,37 +962,10 @@ async def whatsapp_import_csv(
     for row in reader:
         try:
             r = {k.strip().lower(): (v or "").strip() for k, v in row.items() if k}
-            nombre = r.get("nombre") or r.get("name") or r.get("cliente") or "Sin nombre"
-            raw_phone = (
-                r.get("telefono") or r.get("teléfono") or r.get("phone") or r.get("celular")
-                or r.get("numero") or r.get("número") or ""
-            )
-            if not raw_phone:
+            c = parse_row_to_contact(r, country, dial_code=code)
+            if not c:
                 errors += 1
                 continue
-            phone = normalize_phone(raw_phone, code)
-            try:
-                mora = int(float(r.get("dias_mora") or r.get("dias") or r.get("mora") or "0"))
-            except Exception:
-                mora = 0
-            app_cliente = (
-                r.get("app_cliente") or r.get("app") or r.get("aplicacion") or r.get("aplicación") or ""
-            )
-            try:
-                monto = float(str(r.get("monto") or r.get("amount") or "0").replace(",", "").replace("$", "").strip() or 0)
-            except Exception:
-                monto = 0.0
-            c = Contact(
-                nombre=nombre,
-                telefono=phone,
-                monto=monto,
-                empresa=r.get("empresa") or "",
-                vencimiento=r.get("vencimiento") or "",
-                fecha=r.get("fecha") or "",
-                dias_mora=mora,
-                app_cliente=app_cliente,
-                country=country,
-            )
             contacts.append(c.model_dump())
             inserted += 1
         except Exception:
