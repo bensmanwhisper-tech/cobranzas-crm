@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { X, Save, Trash2, Bell, StickyNote, Phone, Mail, MessageCircle, Building2, User, Plus, Check } from "lucide-react";
 import { ESTADOS, findEstado, MEDIOS_CONTACTO, findCountry } from "@/lib/countries";
 import { endpoints } from "@/lib/api";
+import { fmtLocal, fmtUsd } from "@/lib/money";
 
 export default function ClientDetail({ contact: initial, onClose, onChanged }) {
   const [contact, setContact] = useState(initial);
@@ -111,24 +112,47 @@ export default function ClientDetail({ contact: initial, onClose, onChanged }) {
           {/* Recovery panel */}
           <Section title="Recuperación de cartera">
             <div className="grid grid-cols-3 gap-3 mb-3">
-              <Kpi label="Adeudado" value={`$${(contact.monto || 0).toLocaleString()}`} color="#F87171" />
-              <Kpi label="Recuperado" value={`$${(contact.monto_recuperado || 0).toLocaleString()}`} color="#34D399" />
-              <Kpi label="Restante" value={`$${restante.toLocaleString()}`} color="#FDE047" />
+              <Kpi
+                label="Adeudado"
+                local={fmtLocal(contact.monto || 0, contact.country)}
+                usd={fmtUsd(contact.monto || 0, contact.country)}
+                color="#F87171"
+                testId="kpi-debt"
+              />
+              <Kpi
+                label="Recuperado"
+                local={fmtLocal(contact.monto_recuperado || 0, contact.country)}
+                usd={fmtUsd(contact.monto_recuperado || 0, contact.country)}
+                color="#34D399"
+                testId="kpi-recovered"
+              />
+              <Kpi
+                label="Restante"
+                local={fmtLocal(restante, contact.country)}
+                usd={fmtUsd(restante, contact.country)}
+                color="#FDE047"
+                testId="kpi-remaining"
+              />
             </div>
             <div className="h-2 bg-white/5 rounded-full overflow-hidden">
               <div className="h-full transition-all duration-500 bg-gradient-to-r from-emerald-400 to-[#E1FF00]" style={{ width: `${pct}%` }} />
             </div>
             <div className="text-[11px] text-zinc-500 font-mono mt-1.5">{pct.toFixed(1)}% recuperado</div>
             <div className="flex gap-2 mt-3">
-              <input
-                data-testid="recovery-input"
-                type="number"
-                min="0"
-                value={recoveryValue}
-                onChange={(e) => setRecoveryValue(e.target.value)}
-                className="flex-1 bg-[#0B0B0F] border border-white/5 rounded-md px-3 py-2 text-sm font-mono outline-none focus:border-[#E1FF00]/40"
-                placeholder="Monto recuperado"
-              />
+              <div className="flex-1 relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 font-mono text-sm pointer-events-none">
+                  {cty.code === "MX" ? "MX$" : cty.code === "CO" ? "COL$" : cty.code === "PE" ? "S/" : "CLP$"}
+                </span>
+                <input
+                  data-testid="recovery-input"
+                  type="number"
+                  min="0"
+                  value={recoveryValue}
+                  onChange={(e) => setRecoveryValue(e.target.value)}
+                  className="w-full bg-[#0B0B0F] border border-white/5 rounded-md pl-14 pr-3 py-2 text-sm font-mono outline-none focus:border-[#E1FF00]/40"
+                  placeholder="Monto recuperado"
+                />
+              </div>
               <button
                 data-testid="save-recovery"
                 onClick={saveRecovery}
@@ -312,11 +336,12 @@ function Section({ title, children }) {
   );
 }
 
-function Kpi({ label, value, color }) {
+function Kpi({ label, local, usd, color, testId }) {
   return (
-    <div className="bg-[#0B0B0F] border border-white/5 rounded-md p-3 text-center">
+    <div className="bg-[#0B0B0F] border border-white/5 rounded-md p-3 text-center" data-testid={testId}>
       <div className="text-[9px] uppercase tracking-widest text-zinc-500">{label}</div>
-      <div className="font-display font-bold text-base mt-1" style={{ color }}>{value}</div>
+      <div className="font-display font-bold text-base mt-1 truncate" style={{ color }}>{local}</div>
+      <div className="text-[10px] text-zinc-500 font-mono mt-0.5">≈ {usd}</div>
     </div>
   );
 }

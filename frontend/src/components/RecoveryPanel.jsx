@@ -1,24 +1,38 @@
 import { COUNTRIES, findCountry } from "@/lib/countries";
 import { TrendingUp, DollarSign, MessageSquareText, Wallet } from "lucide-react";
+import { fmtLocal, fmtUsd, useRates, currencyOf } from "@/lib/money";
 
 export default function RecoveryPanel({ summary }) {
+  const { rates, updated } = useRates();
   const s = summary || { per_country: [] };
-  const debt = s.total_debt || 0;
-  const recovered = s.total_recovered || 0;
-  const rate = s.recovery_rate || 0;
-  const pct = debt ? Math.min(100, (recovered / debt) * 100) : 0;
+
+  const toUsdWith = (amount, country) => {
+    const cur = currencyOf(country);
+    return Number(amount || 0) / (rates[cur] || 1);
+  };
+
+  const perC = s.per_country || [];
+  const totalDebtUsd = perC.reduce((acc, p) => acc + toUsdWith(p.debt || 0, p.country), 0);
+  const totalRecoveredUsd = perC.reduce((acc, p) => acc + toUsdWith(p.recovered || 0, p.country), 0);
+  const rate = totalDebtUsd ? Math.round((totalRecoveredUsd / totalDebtUsd) * 1000) / 10 : 0;
+  const pct = totalDebtUsd ? Math.min(100, (totalRecoveredUsd / totalDebtUsd) * 100) : 0;
 
   return (
     <div className="space-y-4" data-testid="recovery-panel">
-      {/* Overall recovery bar */}
+      {/* Overall recovery bar (USD totals across countries) */}
       <div className="bg-[#101013] border border-white/5 rounded-xl p-5 relative overflow-hidden">
         <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full blur-3xl opacity-20 bg-emerald-400" />
         <div className="flex items-start justify-between mb-4 relative">
           <div>
-            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 mb-1">Rendimiento de cartera</div>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 mb-1 flex items-center gap-2">
+              <span>Rendimiento de cartera</span>
+              <span className="text-zinc-600 normal-case tracking-normal font-mono text-[9px]">
+                (consolidado USD · fx {updated ? new Date(updated).toLocaleDateString() : "…"})
+              </span>
+            </div>
             <div className="font-display font-bold text-4xl tracking-tight">
-              <span style={{ color: "#34D399" }}>${recovered.toLocaleString()}</span>
-              <span className="text-zinc-500 text-2xl font-normal ml-2">/ ${debt.toLocaleString()}</span>
+              <span style={{ color: "#34D399" }}>US$ {Math.round(totalRecoveredUsd).toLocaleString()}</span>
+              <span className="text-zinc-500 text-2xl font-normal ml-2">/ US$ {Math.round(totalDebtUsd).toLocaleString()}</span>
             </div>
             <div className="text-xs text-zinc-400 mt-1 font-mono">
               Recuperado · {rate}% de tasa de recuperación
@@ -39,7 +53,7 @@ export default function RecoveryPanel({ summary }) {
 
         <div className="grid grid-cols-4 gap-3 mt-4">
           {COUNTRIES.map((c) => {
-            const pc = (s.per_country || []).find((x) => x.country === c.code) || {};
+            const pc = perC.find((x) => x.country === c.code) || {};
             const rr = pc.recovery_rate || 0;
             const rp = (pc.debt || 0) > 0 ? Math.min(100, ((pc.recovered || 0) / pc.debt) * 100) : 0;
             return (
@@ -51,8 +65,11 @@ export default function RecoveryPanel({ summary }) {
                 <div className="font-display font-bold text-lg" style={{ color: rr >= 50 ? "#34D399" : rr >= 20 ? "#FDE047" : "#F87171" }}>
                   {rr}%
                 </div>
-                <div className="text-[10px] text-zinc-500 font-mono mt-0.5">
-                  ${(pc.recovered || 0).toLocaleString()} de ${(pc.debt || 0).toLocaleString()}
+                <div className="text-[11px] text-zinc-400 font-mono mt-0.5 truncate">
+                  {fmtLocal(pc.recovered || 0, c.code)} / {fmtLocal(pc.debt || 0, c.code)}
+                </div>
+                <div className="text-[10px] text-zinc-500 font-mono mt-0.5 truncate">
+                  ≈ {fmtUsd(pc.recovered || 0, c.code)} / {fmtUsd(pc.debt || 0, c.code)}
                 </div>
                 <div className="h-1 bg-white/5 rounded-full overflow-hidden mt-2">
                   <div className="h-full transition-all duration-700" style={{ width: `${rp}%`, background: c.color }} />
@@ -101,7 +118,7 @@ export default function RecoveryPanel({ summary }) {
           </div>
           <div className="grid grid-cols-2 gap-2">
             {COUNTRIES.map((c) => {
-              const pc = (s.per_country || []).find((x) => x.country === c.code) || {};
+              const pc = perC.find((x) => x.country === c.code) || {};
               return (
                 <div key={c.code} data-testid={`sms-${c.code}`} className="bg-[#0B0B0F] border border-white/5 rounded-md p-3 flex items-center gap-3">
                   <span className="text-xl">{c.flag}</span>
@@ -119,3 +136,4 @@ export default function RecoveryPanel({ summary }) {
     </div>
   );
 }
+

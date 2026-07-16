@@ -83,4 +83,6 @@ export const endpoints = {
   whatsappConnect: (country, payload) => api.post(`/whatsapp/connect/${country}`, payload).then((r) => r.data),
   whatsappDisconnect: (country) => api.post(`/whatsapp/disconnect/${country}`).then((r) => r.data),
   whatsappStatus: (country) => api.get(`/whatsapp/status/${country}`).then((r) => r.data),
+
+  fxRates: () => api.get(`/fx/rates`).then((r) => r.data),
 };

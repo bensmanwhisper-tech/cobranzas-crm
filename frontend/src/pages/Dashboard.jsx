@@ -182,17 +182,12 @@ export default function Dashboard() {
               </div>
               <StatsCards summary={summary} />
               <RecoveryPanel summary={summary} />
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2">
-                  <ContactsView
-                    country={country}
-                    onChange={bump}
-                    embedded
-                  />
-                </div>
-                <div>
-                  <ExecutionConsole logs={logs} onClear={() => endpoints.clearLogs().then(loadLogs)} embedded />
-                </div>
+              <div>
+                <ContactsView
+                  country={country}
+                  onChange={bump}
+                  embedded
+                />
               </div>
             </div>
           )}

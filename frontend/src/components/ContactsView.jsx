@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { CheckSquare, Square, Upload, Trash2, Send, Eye, Filter, RefreshCw, Plus, Sparkles } from "lucide-react";
 import { COUNTRIES, findCountry, TEMPLATE_KINDS, ESTADOS, findEstado } from "@/lib/countries";
 import { endpoints } from "@/lib/api";
+import { fmtLocal, fmtUsd } from "@/lib/money";
 import ClientDetail from "@/components/ClientDetail";
 
 const STATUS_META = {
@@ -271,11 +272,19 @@ export default function ContactsView({ country, onChange, embedded = false }) {
                         <span className="px-1.5 py-0.5 rounded bg-white/5 text-xs font-mono truncate inline-block max-w-full">{c.solicitante || c.app_cliente}</span>
                       ) : <span className="text-zinc-600">—</span>}
                     </td>
-                    <td className="py-1.5 px-3 text-white">${Number(c.monto).toLocaleString()}</td>
+                    <td className="py-1.5 px-3 text-white">
+                      <div className="leading-tight">
+                        <div>{fmtLocal(c.monto, c.country)}</div>
+                        <div className="text-[10px] text-zinc-500 font-mono">≈ {fmtUsd(c.monto, c.country)}</div>
+                      </div>
+                    </td>
                     <td className="py-1.5 px-3">
                       {(c.monto_recuperado || 0) > 0 ? (
-                        <div className="min-w-[80px]">
-                          <div className="text-emerald-400 text-xs font-bold">${Number(c.monto_recuperado).toLocaleString()}</div>
+                        <div className="min-w-[110px]">
+                          <div className="text-emerald-400 text-xs font-bold leading-tight">
+                            {fmtLocal(c.monto_recuperado, c.country)}
+                          </div>
+                          <div className="text-[10px] text-zinc-500 font-mono">≈ {fmtUsd(c.monto_recuperado, c.country)}</div>
                           <div className="h-1 bg-white/5 rounded-full mt-0.5 overflow-hidden">
                             <div className="h-full bg-emerald-400" style={{ width: `${recPct}%` }} />
                           </div>

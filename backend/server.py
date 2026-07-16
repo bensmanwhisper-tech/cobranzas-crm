@@ -14,6 +14,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 
 from storage import init_storage, put_object, get_object, guess_mime, APP_NAME
+from fx import get_rates, COUNTRY_CURRENCY
 
 
 ROOT_DIR = Path(__file__).parent
@@ -1045,6 +1046,11 @@ async def whatsapp_status(country: str):
         "webhook_url": cfg.get("whatsapp_webhook_url", ""),
         "has_key": bool(cfg.get("whatsapp_api_key", "")),
     }
+
+
+@api_router.get("/fx/rates")
+async def fx_rates(force: bool = False):
+    return {**get_rates(force=force), "country_currency": COUNTRY_CURRENCY}
 
 
 @api_router.get("/")

@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { COUNTRIES, findCountry, TEMPLATE_KINDS, TEMPLATE_VARIABLES } from "@/lib/countries";
 import { endpoints } from "@/lib/api";
+import { fmtLocal, fmtUsd } from "@/lib/money";
 
 const STEPS = [
   { key: 1, label: "Conectar", icon: Wifi },
@@ -613,7 +614,12 @@ function StepReview({ country, contacts, selected, setSelected, onReload }) {
                         <span className="px-2 py-0.5 rounded bg-white/5 text-xs">{c.app_cliente}</span>
                       ) : <span className="text-zinc-600">—</span>}
                     </td>
-                    <td className="py-2 px-3 text-zinc-300">${Number(c.monto).toLocaleString()}</td>
+                    <td className="py-2 px-3 text-zinc-300">
+                      <div className="leading-tight">
+                        <div>{fmtLocal(c.monto, c.country)}</div>
+                        <div className="text-[10px] text-zinc-500 font-mono">≈ {fmtUsd(c.monto, c.country)}</div>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
