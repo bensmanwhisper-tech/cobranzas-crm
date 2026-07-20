@@ -73,18 +73,21 @@ export default function WhatsAppMessaging({ country }) {
       const res = await endpoints.whatsappMetaSend({
         phone: selectedPhone,
         message: inputText.trim(),
-        country: country,
-        contact_id: contactId
+        country: country || "MX",
+        contact_id: contactId || ""
       });
       if (res.success) {
         setInputText("");
-        loadMessages(selectedPhone);
+        await loadMessages(selectedPhone);
         loadConversations();
       } else {
-        toast.error(res.error || "Error al enviar el mensaje");
+        const errMsg = res.error || "Error al enviar";
+        toast.error(`\u274c ${errMsg}`);
+        console.error("[WhatsApp send error]", res);
       }
     } catch (err) {
-      toast.error("Error de conexión al enviar");
+      toast.error("Error de conexi\u00f3n. \u00bfEl backend est\u00e1 corriendo?");
+      console.error("[WhatsApp send exception]", err);
     } finally {
       setSending(false);
     }

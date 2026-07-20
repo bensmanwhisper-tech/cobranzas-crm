@@ -6,27 +6,41 @@ echo ========================================================
 echo               INICIANDO SISTEMA CRM COMPLETO            
 echo ========================================================
 echo.
-echo [1/2] Encendiendo el Cerebro (Backend de Python)...
-start "Cerebro CRM (Python)" cmd /c "cd backend && start_backend.bat"
 
-:: Esperar 3 segundos para asegurar que Python arranco
-timeout /t 3 /nobreak > nul
+:: ---------- 1. Cerebro (Python Backend) ----------
+echo [1/3] Encendiendo el Cerebro (Backend de Python)...
+start "Cerebro CRM (Python)" cmd /k "cd /d %~dp0backend && start_backend.bat"
 
-echo [2/2] Encendiendo el Puente (Túnel Cloudflare)...
-:: Arranca Cloudflared apuntando al puerto 8001 (que es el que usa start_backend.bat)
-start "Puente Nube (Cloudflare)" cmd /k "cloudflared.cmd tunnel --url http://127.0.0.1:8001"
+:: Esperar que Python arranque
+timeout /t 5 /nobreak > nul
 
+:: ---------- 2. Tunel SSH Serveo (sin instalacion, funciona con Windows SSH) ----------
+echo [2/3] Encendiendo el Tunel publico (via SSH/Serveo)...
+start "Tunel Publico (Serveo)" cmd /k "ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -R 80:localhost:8001 serveo.net"
+
+:: Esperar que el tunel arranque y obtenga URL
+timeout /t 12 /nobreak > nul
+
+:: ---------- 3. Registrar Webhook en Evolution API ----------
+echo [3/3] Registrando webhook en Evolution API...
+echo.
+echo INSTRUCCION IMPORTANTE:
+echo ============================================================
+echo  Mira la ventana "Tunel Publico" y busca una linea que dice:
+echo  "Forwarding HTTP traffic from https://xxxxxxx.serveousercontent.com"
+echo.
+echo  Copia esa URL y ejecuta el script SET_WEBHOOK.ps1 con ella:
+echo  .\SET_WEBHOOK.ps1 -TunnelUrl "https://xxxxxxx.serveousercontent.com"
+echo ============================================================
 echo.
 echo ========================================================
-echo   ¡TODO LISTO! 
-echo   Se abrieron dos ventanas nuevas. NO LAS CIERRES.
+echo   TODO LISTO! Se abrieron ventanas nuevas. NO LAS CIERRES.
 echo.
-echo   - La ventana "Cerebro CRM" maneja tu base de datos.
-echo   - La ventana "Puente Nube" te da el enlace publico.
+echo   - "Cerebro CRM" = Base de datos local (puerto 8001)
+echo   - "Tunel Publico" = Puente a internet (Serveo)
 echo.
-echo   Busca en la ventana del Puente el enlace que dice:
-echo   https://xxxx-xxxx-xxxx.trycloudflare.com
-echo   y actualizalo en Vercel si ha cambiado.
+echo   Para verificar que todo funciona, abre el CRM en Vercel:
+echo   La seccion de Chats mostrara mensajes en tiempo real.
 echo ========================================================
 echo.
 pause
