@@ -1199,79 +1199,133 @@ async def get_dial_codes():
 
 @api_router.get("/whatsapp/qr/{country}")
 async def whatsapp_qr(country: str):
-    import qrcode, base64, json as _json
     country = country.upper()
-    db = await get_db()
-    async with db.execute("SELECT data FROM configs WHERE country=?", (country,)) as cur:
-        row = await cur.fetchone()
-    cfg = json.loads(row["data"]) if row else {}
-    payload = {"app": "cobranzas-xd", "country": country,
-               "webhook": cfg.get("whatsapp_webhook_url", ""),
-               "token": cfg.get("whatsapp_api_key", ""), "ts": now_iso()}
-    qr = qrcode.QRCode(version=4, box_size=8, border=2)
-    qr.add_data(_json.dumps(payload))
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="#E1FF00", back_color="#0A0A0F")
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    b64 = base64.b64encode(buf.getvalue()).decode("ascii")
-    return {"qr_data_url": f"data:image/png;base64,{b64}", "payload": payload}
+    evo_url = "http://localhost:8080"
+    evo_key = "B6D711FCDE4D4FD59365415B5E45B4C1"
+    headers = {"apikey": evo_key, "Content-Type": "application/json"}
+    instance_name = f"cobranzas_{country.lower()}"
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        try:
+            # 1. Intentar crear la instancia
+            payload = {
+                "instanceName": instance_name,
+                "qrcode": True,
+                "integration": "WHATSAPP-BAILEYS"
+            }
+            r = await client.post(f"{evo_url}/instance/create", json=payload, headers=headers)
+            if r.status_code in (200, 201):
+                # Set Webhook automatically
+                wh_payload = {
+                    "enabled": True,
+                    "url": f"http://host.docker.internal:8001/api/whatsapp/evolution/webhook",
+                    "webhookByEvents": False,
+                    "events": ["MESSAGES_UPSERT"]
+                }
+                await client.post(f"{evo_url}/webhook/set/{instance_name}", json=wh_payload, headers=headers)
+                
+                data = r.json()
+                if "qrcode" in data and data["qrcode"].get("base64"):
+                    return {"qr_data_url": data["qrcode"]["base64"]}
+            
+            # 2. Si ya existe, pedir conectar para obtener el QR
+            r2 = await client.get(f"{evo_url}/instance/connect/{instance_name}", headers=headers)
+            if r2.status_code == 200:
+                data = r2.json()
+                if "base64" in data:
+                    return {"qr_data_url": data["base64"]}
+            
+            return {"qr_data_url": "", "error": "No se pudo generar QR de Evolution API"}
+        except Exception as e:
+            return {"qr_data_url": "", "error": f"Error conectando a Evolution API: {e}"}
 
 
-@api_router.post("/whatsapp/connect/{country}")
-async def whatsapp_connect(country: str, payload: Dict[str, Any]):
-    country = country.upper()
-    if country not in VALID_COUNTRIES:
-        raise HTTPException(400, "País inválido")
-    update_data = {
-        "whatsapp_webhook_url": payload.get("webhook_url", "").strip(),
-        "whatsapp_api_key":     payload.get("api_key", "").strip(),
-        "whatsapp_phone":       payload.get("phone_number", "").strip(),
-        "whatsapp_connected":   True,
-        "updated_at": now_iso(), "country": country,
-    }
-    db = await get_db()
-    async with db.execute("SELECT data FROM configs WHERE country=?", (country,)) as cur:
-        row = await cur.fetchone()
-    existing = json.loads(row["data"]) if row else {}
-    existing.update(update_data)
-    await db.execute(
-        "INSERT INTO configs (country,data) VALUES (?,?) ON CONFLICT(country) DO UPDATE SET data=excluded.data",
-        (country, json.dumps(existing)),
-    )
-    await db.commit()
-    await add_log("success", "WhatsApp", f"Conectado: {update_data.get('whatsapp_phone') or 'sin número'}", country)
-    return {"connected": True, **update_data}
+@api_router.post("/whatsapp/evolution/webhook")
+async def whatsapp_evolution_webhook(payload: dict):
+    """
+    Recibe eventos desde Evolution API (ej. MESSAGES_UPSERT)
+    """
+    event = payload.get("event")
+    if event == "messages.upsert":
+        data = payload.get("data", {})
+        msg_key = data.get("key", {})
+        if msg_key.get("fromMe"):
+            return {"status": "ignored"} # Ignore outgoing messages (we save them when we send)
+        
+        phone = msg_key.get("remoteJid", "").split("@")[0]
+        wa_msg_id = msg_key.get("id")
+        
+        msg_content = data.get("message", {})
+        text = ""
+        if "conversation" in msg_content:
+            text = msg_content["conversation"]
+        elif "extendedTextMessage" in msg_content:
+            text = msg_content["extendedTextMessage"].get("text", "")
+        
+        if not text:
+            return {"status": "ignored_non_text"}
 
+        instance_name = payload.get("instance", "")
+        country = instance_name.split("_")[-1].upper() if "_" in instance_name else "GLOBAL"
 
-@api_router.post("/whatsapp/disconnect/{country}")
-async def whatsapp_disconnect(country: str):
-    country = country.upper()
-    db = await get_db()
-    async with db.execute("SELECT data FROM configs WHERE country=?", (country,)) as cur:
-        row = await cur.fetchone()
-    existing = json.loads(row["data"]) if row else {}
-    existing["whatsapp_connected"] = False
-    await db.execute(
-        "INSERT INTO configs (country,data) VALUES (?,?) ON CONFLICT(country) DO UPDATE SET data=excluded.data",
-        (country, json.dumps(existing)),
-    )
-    await db.commit()
-    await add_log("warn", "WhatsApp", "Desconectado", country)
-    return {"connected": False}
+        # Search for contact_id if this phone exists in our db
+        db = await get_db()
+        async with db.execute("SELECT id FROM contacts WHERE data LIKE ?", (f"%{phone}%",)) as cur:
+            row = await cur.fetchone()
+        contact_id = row["id"] if row else ""
+
+        # Insert message
+        msg_id = make_id()
+        await db.execute(
+            """INSERT INTO whatsapp_messages (id, contact_id, phone, direction, body, msg_type, wa_msg_id, status, country, created_at)
+               VALUES (?, ?, ?, 'incoming', ?, 'text', ?, 'received', ?, ?)""",
+            (msg_id, contact_id, phone, text, wa_msg_id, country, now_iso()),
+        )
+        await db.commit()
+        await add_log("info", "WhatsApp", f"Mensaje recibido de {phone}", country)
+
+    return {"status": "ok"}
 
 
 @api_router.get("/whatsapp/status/{country}")
 async def whatsapp_status(country: str):
     country = country.upper()
-    db = await get_db()
-    async with db.execute("SELECT data FROM configs WHERE country=?", (country,)) as cur:
-        row = await cur.fetchone()
-    cfg = json.loads(row["data"]) if row else {}
-    return {"connected": bool(cfg.get("whatsapp_connected", False)),
-            "phone": cfg.get("whatsapp_phone", ""),
-            "webhook_url": cfg.get("whatsapp_webhook_url", ""),
-            "has_key": bool(cfg.get("whatsapp_api_key", ""))}
+    evo_url = "http://localhost:8080"
+    evo_key = "B6D711FCDE4D4FD59365415B5E45B4C1"
+    headers = {"apikey": evo_key}
+    instance_name = f"cobranzas_{country.lower()}"
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(f"{evo_url}/instance/connectionState/{instance_name}", headers=headers)
+            if r.status_code == 200:
+                state = r.json().get("instance", {}).get("state", "close")
+                if state == "open":
+                    return {"connected": True, "state": "Conectado", "phone": "Evolution API"}
+                elif state == "connecting":
+                    return {"connected": False, "state": "Conectando..."}
+            
+            return {"connected": False, "state": "Desconectado"}
+    except Exception:
+        return {"connected": False, "state": "Error de conexión con Evolution API"}
+
+
+@api_router.post("/whatsapp/disconnect/{country}")
+async def whatsapp_disconnect(country: str):
+    country = country.upper()
+    evo_url = "http://localhost:8080"
+    evo_key = "B6D711FCDE4D4FD59365415B5E45B4C1"
+    headers = {"apikey": evo_key}
+    instance_name = f"cobranzas_{country.lower()}"
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            await client.delete(f"{evo_url}/instance/logout/{instance_name}", headers=headers)
+    except Exception:
+        pass
+
+    await add_log("warn", "WhatsApp", "Desconectado (Evolution API)", country)
+    return {"connected": False}
 
 
 # ============================================================
@@ -1500,31 +1554,33 @@ async def test_meta_connection():
 
 @api_router.post("/whatsapp/meta/send")
 async def meta_send_message(payload: MetaSendPayload):
-    """Envía un mensaje de texto libre vía WhatsApp Cloud API de Meta."""
-    cfg = await _get_meta_config()
-    token = cfg.get("access_token", "").strip()
-    phone_id = cfg.get("phone_number_id", "").strip()
-    if not token or not phone_id:
-        raise HTTPException(400, "Credenciales de Meta no configuradas. Ve a Configuración → WhatsApp Cloud API.")
+    """Envía un mensaje de texto libre vía Evolution API."""
+    country = payload.country.lower() if payload.country else "default"
+    instance_name = f"cobranzas_{country}"
+    evo_url = "http://localhost:8080"
+    evo_key = "B6D711FCDE4D4FD59365415B5E45B4C1"
 
-    to_phone = _normalize_phone_for_meta(payload.phone)
+    to_phone = payload.phone.replace("+", "").replace(" ", "")
     if not to_phone:
         raise HTTPException(400, "Número de teléfono inválido")
 
     body = {
-        "messaging_product": "whatsapp",
-        "recipient_type": "individual",
-        "to": to_phone,
-        "type": "text",
-        "text": {"preview_url": False, "body": payload.message},
+        "number": to_phone,
+        "options": {
+            "delay": 1000,
+            "presence": "composing"
+        },
+        "textMessage": {
+            "text": payload.message
+        }
     }
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as http:
             r = await http.post(
-                f"{META_GRAPH_URL}/{phone_id}/messages",
+                f"{evo_url}/message/sendText/{instance_name}",
                 headers={
-                    "Authorization": f"Bearer {token}",
+                    "apikey": evo_key,
                     "Content-Type": "application/json",
                 },
                 json=body,
@@ -1532,9 +1588,7 @@ async def meta_send_message(payload: MetaSendPayload):
             resp_data = r.json()
 
             if r.status_code in (200, 201):
-                wa_msg_id = ""
-                if "messages" in resp_data and resp_data["messages"]:
-                    wa_msg_id = resp_data["messages"][0].get("id", "")
+                wa_msg_id = resp_data.get("key", {}).get("id", "")
 
                 # Save to local history
                 msg_id = make_id()
@@ -1546,15 +1600,16 @@ async def meta_send_message(payload: MetaSendPayload):
                 )
                 await db.commit()
 
-                await add_log("success", "WhatsApp Meta", f"→ Mensaje enviado a {payload.phone}", payload.country)
+                await add_log("success", "Evolution API", f"→ Mensaje enviado a {payload.phone}", payload.country)
                 return {"success": True, "wa_msg_id": wa_msg_id, "msg_id": msg_id}
             else:
-                err_msg = resp_data.get("error", {}).get("message", r.text[:200])
-                await add_log("error", "WhatsApp Meta", f"✖ {payload.phone}: {err_msg}", payload.country)
+                err_msg = resp_data.get("response", {}).get("message", r.text[:200])
+                await add_log("error", "Evolution API", f"✖ {payload.phone}: {err_msg}", payload.country)
                 return {"success": False, "error": err_msg, "status_code": r.status_code}
     except Exception as e:
-        await add_log("error", "WhatsApp Meta", f"Excepción enviando a {payload.phone}: {str(e)[:150]}", payload.country)
+        await add_log("error", "Evolution API", f"Excepción enviando a {payload.phone}: {str(e)[:150]}", payload.country)
         return {"success": False, "error": str(e)[:200]}
+
 
 
 @api_router.post("/whatsapp/meta/send-template")

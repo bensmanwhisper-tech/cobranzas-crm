@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { endpoints } from "@/lib/api";
 import { toast } from "sonner";
-import { Send, User, Clock, Phone, AlertCircle, RefreshCw, MessageCircle } from "lucide-react";
+import { Send, User, Clock, Phone, AlertCircle, RefreshCw, MessageCircle, Plus, Save, Search } from "lucide-react";
 import { format, parseISO } from "date-fns";
 
 export default function WhatsAppMessaging({ country }) {
@@ -9,9 +9,11 @@ export default function WhatsAppMessaging({ country }) {
   const [selectedPhone, setSelectedPhone] = useState(null);
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [loadingConv, setLoadingConv] = useState(false);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [sending, setSending] = useState(false);
+  const [savingContact, setSavingContact] = useState(false);
   const messagesEndRef = useRef(null);
   
   const loadConversations = async () => {
@@ -88,29 +90,89 @@ export default function WhatsAppMessaging({ country }) {
     }
   };
 
+  const handleNewChat = () => {
+    const num = prompt("Ingresa el número de WhatsApp con código de país (ej: 521234567890):");
+    if (num) {
+      const cleanNum = num.replace(/\D/g, '');
+      if (cleanNum) {
+        setSelectedPhone(cleanNum);
+        setMessages([]);
+      }
+    }
+  };
+
+  const handleSaveContact = async () => {
+    const nombre = prompt("Nombre del contacto:");
+    if (!nombre) return;
+    const monto = prompt("Deuda actual (opcional, pon 0 si no tiene):", "0");
+    
+    setSavingContact(true);
+    try {
+      await endpoints.createContact({
+        country: country,
+        data: {
+          phone: selectedPhone,
+          nombre: nombre,
+          monto: parseFloat(monto) || 0,
+          app_cliente: "Manual"
+        }
+      });
+      toast.success("Contacto guardado localmente");
+      loadConversations();
+    } catch (e) {
+      toast.error("Error al guardar contacto");
+    } finally {
+      setSavingContact(false);
+    }
+  };
+
   const activeContact = conversations.find(c => c.phone === selectedPhone)?.contact;
+
+  const filteredConversations = conversations.filter(c => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    const name = c.contact?.nombre?.toLowerCase() || "";
+    return name.includes(q) || c.phone.includes(q);
+  });
 
   return (
     <div className="flex h-[calc(100vh-140px)] bg-[#0B0B0F] border border-white/10 rounded-xl overflow-hidden shadow-2xl">
       {/* Sidebar - Conversations */}
       <div className="w-1/3 border-r border-white/5 flex flex-col bg-[#101013]">
-        <div className="p-4 border-b border-white/5 flex justify-between items-center bg-[#15151A]">
-          <h2 className="font-display font-bold text-lg text-white flex items-center gap-2">
-            Chats <span className="text-xs font-normal text-zinc-400 bg-black/40 px-2 py-0.5 rounded-full">{conversations.length}</span>
-          </h2>
-          <button onClick={loadConversations} className="text-zinc-400 hover:text-white transition-colors" title="Actualizar">
-            <RefreshCw size={16} className={loadingConv ? "animate-spin" : ""} />
-          </button>
+        <div className="p-4 border-b border-white/5 flex flex-col gap-3 bg-[#15151A]">
+          <div className="flex justify-between items-center">
+            <h2 className="font-display font-bold text-lg text-white flex items-center gap-2">
+              Chats <span className="text-xs font-normal text-zinc-400 bg-black/40 px-2 py-0.5 rounded-full">{conversations.length}</span>
+            </h2>
+            <div className="flex items-center gap-3">
+              <button onClick={handleNewChat} className="text-emerald-400 hover:text-emerald-300 transition-colors" title="Nuevo Chat">
+                <Plus size={18} />
+              </button>
+              <button onClick={loadConversations} className="text-zinc-400 hover:text-white transition-colors" title="Actualizar">
+                <RefreshCw size={16} className={loadingConv ? "animate-spin" : ""} />
+              </button>
+            </div>
+          </div>
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+            <input
+              type="text"
+              placeholder="Buscar chat o número..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-[#0B0B0F] border border-white/10 rounded-lg pl-9 pr-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500/50 transition-colors"
+            />
+          </div>
         </div>
         
         <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 space-y-1">
-          {conversations.length === 0 && !loadingConv ? (
+          {filteredConversations.length === 0 && !loadingConv ? (
             <div className="text-center text-zinc-500 py-8 px-4 text-sm flex flex-col items-center">
               <AlertCircle size={32} className="mb-2 opacity-50" />
-              No hay conversaciones activas. Los mensajes enviados y recibidos aparecerán aquí.
+              {searchQuery ? "No se encontraron chats" : "No hay conversaciones activas."}
             </div>
           ) : (
-            conversations.map((conv) => {
+            filteredConversations.map((conv) => {
               const isSelected = selectedPhone === conv.phone;
               return (
                 <button
@@ -173,6 +235,15 @@ export default function WhatsAppMessaging({ country }) {
                   </div>
                 </div>
               </div>
+              {!activeContact && (
+                <button
+                  onClick={handleSaveContact}
+                  disabled={savingContact}
+                  className="text-xs px-3 py-1.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5 hover:bg-emerald-500/20 transition-colors"
+                >
+                  <Save size={14} /> Guardar Contacto
+                </button>
+              )}
             </div>
 
             {/* Chat Messages */}
@@ -228,7 +299,7 @@ export default function WhatsAppMessaging({ country }) {
           <div className="flex-1 flex flex-col items-center justify-center text-zinc-500 opacity-60">
             <MessageCircle size={64} className="mb-4 text-emerald-500 opacity-50" />
             <p className="font-display text-xl">Selecciona un chat</p>
-            <p className="text-sm mt-2">Los mensajes de WhatsApp Cloud API aparecerán aquí</p>
+            <p className="text-sm mt-2">Los mensajes de Evolution API aparecerán aquí en vivo.</p>
           </div>
         )}
       </div>

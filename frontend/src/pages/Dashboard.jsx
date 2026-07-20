@@ -10,7 +10,7 @@ import TemplatesView from "@/components/TemplatesView";
 import ReportsView from "@/components/ReportsView";
 import ConfigView from "@/components/ConfigView";
 import ExecutionConsole from "@/components/ExecutionConsole";
-import WhatsAppIndicator from "@/components/WhatsAppIndicator";
+
 import FilesView from "@/components/FilesView";
 import WhatsAppCenter from "@/components/WhatsAppCenter";
 import RecoveryPanel from "@/components/RecoveryPanel";
@@ -159,7 +159,6 @@ export default function Dashboard() {
             <CountrySelector value={country} onChange={setCountry} />
           </div>
           <div className="flex items-center gap-3">
-            <WhatsAppIndicator country={country} config={config} onRefresh={() => loadConfig(country)} />
             <button
               data-testid="start-process-btn"
               onClick={startFullProcess}

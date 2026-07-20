@@ -206,37 +206,19 @@ export default function WhatsAppCenter({ defaultCountry = "MX", onChange }) {
 
 // ---------- Step 1: Connect ----------
 function StepConnect({ country, status, onChange }) {
-  const [mode, setMode] = useState("qr"); // qr | manual
   const [qrData, setQrData] = useState(null);
-  const [webhookUrl, setWebhookUrl] = useState(status.webhook_url || "");
-  const [apiKey, setApiKey] = useState("");
-  const [phone, setPhone] = useState(status.phone || "");
-  const [testing, setTesting] = useState(false);
+  const [loading, setLoading] = useState(true);
   const cty = findCountry(country);
 
-  useEffect(() => { setWebhookUrl(status.webhook_url || ""); setPhone(status.phone || ""); }, [status]);
-
   useEffect(() => {
-    if (mode === "qr") {
-      endpoints.whatsappQr(country).then((r) => setQrData(r.qr_data_url)).catch(() => {});
+    if (!status.connected) {
+      setLoading(true);
+      endpoints.whatsappQr(country).then((r) => {
+        setQrData(r.qr_data_url);
+        setLoading(false);
+      }).catch(() => { setLoading(false); });
     }
-  }, [mode, country, webhookUrl]);
-
-  const connect = async () => {
-    if (!webhookUrl.trim()) { toast.warning("Pega el webhook URL de tu WhatsApp"); return; }
-    setTesting(true);
-    try {
-      await endpoints.whatsappConnect(country, {
-        webhook_url: webhookUrl,
-        api_key: apiKey,
-        phone_number: phone,
-      });
-      toast.success(`✓ WhatsApp conectado para ${cty.label}`);
-      onChange?.();
-    } catch {
-      toast.error("Error al conectar");
-    } finally { setTesting(false); }
-  };
+  }, [country, status.connected]);
 
   const disconnect = async () => {
     await endpoints.whatsappDisconnect(country);
@@ -253,12 +235,12 @@ function StepConnect({ country, status, onChange }) {
               <Wifi size={26} className="text-emerald-400" />
             </div>
             <div>
-              <div className="text-[10px] uppercase tracking-widest text-emerald-400">Conectado</div>
+              <div className="text-[10px] uppercase tracking-widest text-emerald-400">Estado en vivo</div>
               <div className="font-display font-bold text-2xl mt-0.5">
                 WhatsApp {cty.label} <span className="text-emerald-400">•</span>
               </div>
               <div className="text-zinc-400 text-sm mt-1 font-mono">
-                {status.phone || "sin número"} · webhook activo
+                {status.state || "Conectado"} a Evolution API
               </div>
             </div>
           </div>
@@ -272,9 +254,9 @@ function StepConnect({ country, status, onChange }) {
         </div>
         <div className="mt-6 p-4 rounded-lg bg-emerald-500/5 border border-emerald-500/10 text-sm text-emerald-100/70">
           <div className="flex items-center gap-2 font-medium mb-1">
-            <Check size={14} className="text-emerald-400" /> Todo listo
+            <Check size={14} className="text-emerald-400" /> Motor activo y sincronizado
           </div>
-          Ya puedes avanzar al paso 2 y cargar tu CSV de contactos.
+          Ya puedes avanzar al paso 2 y cargar tu CSV de contactos, o ir a la sección Chats.
         </div>
       </div>
     );
@@ -283,81 +265,40 @@ function StepConnect({ country, status, onChange }) {
   return (
     <div className="space-y-4" data-testid="wa-connect-panel">
       <div className="flex items-center gap-1 bg-[#101013] border border-white/5 rounded-md p-1 w-fit">
-        {[
-          { k: "qr", l: "Escanear QR", i: QrCode },
-          { k: "manual", l: "Manual (Webhook)", i: Wifi },
-        ].map(({ k, l, i: I }) => (
-          <button
-            key={k}
-            data-testid={`connect-mode-${k}`}
-            onClick={() => setMode(k)}
-            className={`px-4 py-2 rounded text-xs flex items-center gap-2 transition-colors ${
-              mode === k ? "bg-white/5 text-white" : "text-zinc-400 hover:text-white"
-            }`}
-          >
-            <I size={12} /> {l}
-          </button>
-        ))}
+        <button
+          className="px-4 py-2 rounded text-xs flex items-center gap-2 transition-colors bg-white/5 text-white"
+        >
+          <QrCode size={12} /> Escanear QR
+        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {mode === "qr" && (
-          <div className="bg-[#101013] border border-white/5 rounded-xl p-6 flex flex-col items-center text-center">
-            <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-3">Escanea con tu servicio</div>
-            {qrData ? (
-              <img src={qrData} alt="QR" className="w-56 h-56 rounded-lg" data-testid="wa-qr-image" />
-            ) : (
-              <div className="w-56 h-56 rounded-lg bg-black grid place-items-center">
-                <span className="ascii-loader text-zinc-500" />
-              </div>
-            )}
-            <div className="mt-4 text-xs text-zinc-400 font-mono">
-              Compatible con Evolution API · WPPConnect · Chatwoot · N8N
+        <div className="bg-[#101013] border border-white/5 rounded-xl p-6 flex flex-col items-center text-center">
+          <div className="text-[10px] uppercase tracking-widest text-zinc-500 mb-3">Escanea con tu WhatsApp</div>
+          {qrData ? (
+            <img src={qrData} alt="QR" className="w-56 h-56 rounded-lg" data-testid="wa-qr-image" />
+          ) : (
+            <div className="w-56 h-56 rounded-lg bg-black grid place-items-center">
+              {loading ? <span className="ascii-loader text-zinc-500" /> : <span className="text-zinc-500 text-xs">Error al cargar QR</span>}
             </div>
+          )}
+          <div className="mt-4 text-xs text-zinc-400 font-mono">
+            Powered by Evolution API
           </div>
-        )}
+        </div>
 
-        <div className={`bg-[#101013] border border-white/5 rounded-xl p-6 space-y-4 ${mode === "qr" ? "" : "md:col-span-2"}`}>
-          <div className="text-[10px] uppercase tracking-widest text-zinc-500">Datos de conexión</div>
-          <FieldRow label="Webhook URL (POST)" testId="wa-webhook-input">
-            <input
-              value={webhookUrl}
-              onChange={(e) => setWebhookUrl(e.target.value)}
-              placeholder="https://tu-servicio.com/send"
-              className="w-full bg-[#0B0B0F] border border-white/5 rounded-md px-3 py-2 text-sm font-mono outline-none focus:border-[#E1FF00]/40"
-            />
-          </FieldRow>
-          <FieldRow label="Token / API Key (opcional)" testId="wa-token-input">
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk_..."
-              className="w-full bg-[#0B0B0F] border border-white/5 rounded-md px-3 py-2 text-sm font-mono outline-none focus:border-[#E1FF00]/40"
-            />
-          </FieldRow>
-          <FieldRow label="Número WhatsApp (informativo)" testId="wa-phone-input">
-            <input
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder={`${cty.dial} 55 1234 5678`}
-              className="w-full bg-[#0B0B0F] border border-white/5 rounded-md px-3 py-2 text-sm font-mono outline-none focus:border-[#E1FF00]/40"
-            />
-          </FieldRow>
-          <button
-            data-testid="wa-connect-btn"
-            onClick={connect}
-            disabled={testing}
-            className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-semibold py-2.5 rounded-md flex items-center justify-center gap-2 active:scale-95 transition-transform"
-          >
-            {testing ? "Conectando..." : <>
-              <Wifi size={14} strokeWidth={2.5} />
-              Conectar WhatsApp {cty.flag}
-            </>}
-          </button>
-          <div className="text-[11px] text-zinc-500 leading-relaxed">
-            El CRM hará <code className="bg-white/5 px-1 rounded">POST</code> al webhook cada vez que envíes un mensaje.
-            Funciona con cualquier proveedor WhatsApp (Evolution API, WPPConnect, Twilio, WhatsApp Cloud API, tu propio bridge).
+        <div className="bg-[#101013] border border-white/5 rounded-xl p-6 space-y-4">
+          <div className="text-[10px] uppercase tracking-widest text-zinc-500">Instrucciones</div>
+          <div className="text-sm text-zinc-400 space-y-3">
+            <p>1. Abre WhatsApp en tu celular.</p>
+            <p>2. Toca en <strong>Configuración</strong> o en los tres puntos (⋮).</p>
+            <p>3. Selecciona <strong>Dispositivos vinculados</strong>.</p>
+            <p>4. Toca <strong>Vincular un dispositivo</strong> y apunta tu cámara al código QR de la izquierda.</p>
+          </div>
+          <div className="mt-4 pt-4 border-t border-white/5">
+            <div className="text-[11px] text-yellow-500/70 leading-relaxed">
+              * La conexión se guardará automáticamente en el motor local y no se desconectará al cerrar el navegador.
+            </div>
           </div>
         </div>
       </div>
