@@ -6,6 +6,7 @@ import { endpoints } from "@/lib/api";
 
 export default function ConfigView({ country, config, onSaved }) {
   const [form, setForm] = useState(null);
+  const [metaForm, setMetaForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [scripts, setScripts] = useState([]);
   const [newScript, setNewScript] = useState("");
@@ -13,6 +14,7 @@ export default function ConfigView({ country, config, onSaved }) {
 
   useEffect(() => {
     if (config) setForm(config);
+    endpoints.whatsappMetaConfigGet().then(setMetaForm).catch(console.error);
   }, [config]);
 
   useEffect(() => {
@@ -24,7 +26,10 @@ export default function ConfigView({ country, config, onSaved }) {
     setSaving(true);
     try {
       await endpoints.saveConfig(country, form);
-      toast.success(`Configuración guardada para ${cty.label}`);
+      if (metaForm) {
+        await endpoints.whatsappMetaConfigSave(metaForm);
+      }
+      toast.success(`Configuración guardada para ${cty.label} y Meta`);
       onSaved?.();
     } catch {
       toast.error("Error al guardar");
@@ -149,6 +154,42 @@ Content-Type: application/json
 }`}
           </pre>
         </div>
+      </Section>
+
+      {/* Meta Cloud API */}
+      <Section title="WhatsApp Cloud API (Meta Oficial - Global)" icon={Key} accent="#06D6A0">
+        <div className="text-xs text-zinc-500 mb-3 font-mono">
+          Configuración global para la API oficial de WhatsApp (Meta). Estos valores aplican para todos los países.
+        </div>
+        <Field
+          label="Access Token (Permanente)"
+          testId="field-meta-token"
+          value={metaForm?.access_token || ""}
+          onChange={(v) => setMetaForm({ ...metaForm, access_token: v })}
+          placeholder="EAAD..."
+          type="password"
+        />
+        <Field
+          label="Phone Number ID"
+          testId="field-meta-phone-id"
+          value={metaForm?.phone_number_id || ""}
+          onChange={(v) => setMetaForm({ ...metaForm, phone_number_id: v })}
+          placeholder="123456789012345"
+        />
+        <Field
+          label="WhatsApp Business Account ID (WABA)"
+          testId="field-meta-waba"
+          value={metaForm?.waba_id || ""}
+          onChange={(v) => setMetaForm({ ...metaForm, waba_id: v })}
+          placeholder="123456789012345"
+        />
+        <Field
+          label="Verify Token (Webhook)"
+          testId="field-meta-verify-token"
+          value={metaForm?.verify_token || ""}
+          onChange={(v) => setMetaForm({ ...metaForm, verify_token: v })}
+          placeholder="cobranzas_xd_webhook_2024"
+        />
       </Section>
 
       {/* Scripts registry */}

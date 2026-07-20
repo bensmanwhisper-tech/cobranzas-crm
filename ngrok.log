@@ -1,0 +1,11 @@
+t=2026-07-20T05:27:34-0400 lvl=info msg="no configuration paths supplied"
+t=2026-07-20T05:27:34-0400 lvl=info msg="using configuration at default config path" path=C:\\Users\\Bensman\\AppData\\Local\\ngrok\\ngrok.yml
+t=2026-07-20T05:27:34-0400 lvl=info msg="open config file" path=C:\\Users\\Bensman\\AppData\\Local\\ngrok\\ngrok.yml err=nil
+t=2026-07-20T05:27:34-0400 lvl=info msg="FIPS 140 mode" enabled=false
+t=2026-07-20T05:27:34-0400 lvl=info msg="starting web service" obj=web addr=127.0.0.1:4040 allow_hosts=[]
+t=2026-07-20T05:27:35-0400 lvl=eror msg="failed to reconnect session" obj=tunnels.session err="authentication failed: We do not allow agents to connect to ngrok from your IP address (190.97.245.53).\r\n\r\nERR_NGROK_9040\r\n"
+t=2026-07-20T05:27:35-0400 lvl=eror msg="session closing" obj=tunnels.session err="authentication failed: We do not allow agents to connect to ngrok from your IP address (190.97.245.53).\r\n\r\nERR_NGROK_9040\r\n"
+t=2026-07-20T05:27:35-0400 lvl=info msg="received stop request" obj=app stopReq="{err:{Remote:true Inner:{Inner:0x3df9178aa5d0}} restart:false}"
+t=2026-07-20T05:27:35-0400 lvl=eror msg="terminating with error" obj=app err="authentication failed: We do not allow agents to connect to ngrok from your IP address (190.97.245.53).\r\n\r\nERR_NGROK_9040\r\n"
+t=2026-07-20T05:27:35-0400 lvl=crit msg="command failed" err="authentication failed: We do not allow agents to connect to ngrok from your IP address (190.97.245.53).\r\n\r\nERR_NGROK_9040\r\n"
+t=2026-07-20T05:27:35-0400 lvl=info msg="no more state changes" obj=tunnels.session

@@ -14,10 +14,12 @@ import WhatsAppIndicator from "@/components/WhatsAppIndicator";
 import FilesView from "@/components/FilesView";
 import WhatsAppCenter from "@/components/WhatsAppCenter";
 import RecoveryPanel from "@/components/RecoveryPanel";
+import WhatsAppMessaging from "@/components/WhatsAppMessaging";
 
 const NAV = [
   { key: "dashboard", label: "Panel", icon: LayoutGrid },
-  { key: "whatsapp", label: "WhatsApp", icon: MessageCircle, highlight: true },
+  { key: "messaging", label: "Chat Mensajería", icon: MessageCircle, highlight: true },
+  { key: "whatsapp", label: "WhatsApp (Bot)", icon: Radio },
   { key: "contacts", label: "Contactos", icon: Users },
   { key: "templates", label: "Plantillas", icon: MessageSquareText },
   { key: "files", label: "Archivos", icon: HardDrive },
@@ -189,6 +191,12 @@ export default function Dashboard() {
                   embedded
                 />
               </div>
+            </div>
+          )}
+
+          { tab === "messaging" && (
+            <div data-testid="tab-messaging" className="h-full">
+              <WhatsAppMessaging country={country} />
             </div>
           )}
 

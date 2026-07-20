@@ -2,15 +2,14 @@
 import time
 import logging
 import requests
-from typing import Dict, Optional
+from typing import Dict
 
 logger = logging.getLogger(__name__)
 
 FX_URL = "https://open.er-api.com/v6/latest/USD"
 _cache: Dict = {"rates": None, "ts": 0.0, "updated": ""}
-TTL_SECONDS = 3600  # 1 hour
+TTL_SECONDS = 3600
 
-# Fallback rates (approx, used if API is unreachable)
 FALLBACK = {"MXN": 18.5, "COP": 4100.0, "PEN": 3.75, "CLP": 960.0, "USD": 1.0}
 
 
@@ -31,13 +30,11 @@ def get_rates(force: bool = False) -> Dict:
             return {"rates": wanted, "updated": _cache["updated"], "source": "live"}
     except Exception as e:
         logger.warning(f"FX fetch failed: {e}")
-    # Fallback
     _cache["rates"] = _cache["rates"] or FALLBACK
     _cache["updated"] = _cache["updated"] or "fallback"
     return {"rates": _cache["rates"], "updated": _cache["updated"], "source": "fallback"}
 
 
-# Country → local currency
 COUNTRY_CURRENCY = {
     "MX": "MXN",
     "CO": "COP",

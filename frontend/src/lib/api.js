@@ -85,5 +85,17 @@ export const endpoints = {
   whatsappDisconnect: (country) => api.post(`/whatsapp/disconnect/${country}`).then((r) => r.data),
   whatsappStatus: (country) => api.get(`/whatsapp/status/${country}`).then((r) => r.data),
 
+  // Meta Official API
+  whatsappMetaConfigGet: () => api.get(`/whatsapp/meta/config`).then((r) => r.data),
+  whatsappMetaConfigSave: (payload) => api.post(`/whatsapp/meta/config`, payload).then((r) => r.data),
+  whatsappMetaTest: () => api.post(`/whatsapp/meta/test`).then((r) => r.data),
+  whatsappMetaSend: (payload) => api.post(`/whatsapp/meta/send`, payload).then((r) => r.data),
+  whatsappMetaSendTemplate: (payload) => api.post(`/whatsapp/meta/send-template`, payload).then((r) => r.data),
+
+  // Messaging / Chat History
+  getMessages: (params) => api.get(`/messages`, { params }).then((r) => r.data),
+  postMessage: (payload) => api.post(`/messages`, payload).then((r) => r.data),
+  getConversations: (params) => api.get(`/messages/conversations`, { params }).then((r) => r.data),
+
   fxRates: () => api.get(`/fx/rates`).then((r) => r.data),
 };
