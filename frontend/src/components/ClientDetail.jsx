@@ -17,6 +17,7 @@ export default function ClientDetail({ contact: initial, onClose, onChanged }) {
   const restante = Math.max(0, (contact.monto || 0) - (contact.monto_recuperado || 0));
   const pct = contact.monto ? Math.min(100, ((contact.monto_recuperado || 0) / contact.monto) * 100) : 0;
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { setContact(initial); setRecoveryValue(String(initial.monto_recuperado || 0)); }, [initial.id]);
 
   const persist = (c) => { setContact(c); onChanged?.(c); };

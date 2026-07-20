@@ -44,6 +44,7 @@ export default function WhatsAppMessaging({ country }) {
     loadConversations();
     const interval = setInterval(loadConversations, 10000); // refresh every 10s
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [country]);
 
   useEffect(() => {

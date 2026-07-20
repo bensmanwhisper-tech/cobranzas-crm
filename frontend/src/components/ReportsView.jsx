@@ -59,6 +59,7 @@ export default function ReportsView() {
       row.recovered_usd = Math.round(totalUsd);
       return row;
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ts, rates]);
 
   const projectionUsd = useMemo(() => {
@@ -76,6 +77,7 @@ export default function ReportsView() {
     if (period === "week") return avg * 4.3;
     if (period === "month") return avg;
     return avg * 30; // day → 30 days
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ts, rates, period]);
 
   const exportCsv = () => {
