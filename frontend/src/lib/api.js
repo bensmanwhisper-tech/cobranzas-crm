@@ -6,6 +6,9 @@ export const API = `${BACKEND_URL}/api`;
 export const api = axios.create({
   baseURL: API,
   timeout: 30000,
+  headers: {
+    "Bypass-Tunnel-Reminder": "true"
+  }
 });
 
 export const endpoints = {
