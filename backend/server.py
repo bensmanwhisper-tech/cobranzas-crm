@@ -1217,10 +1217,12 @@ async def whatsapp_qr(country: str):
             if r.status_code in (200, 201):
                 # Set Webhook automatically
                 wh_payload = {
-                    "enabled": True,
-                    "url": f"http://host.docker.internal:8001/api/whatsapp/evolution/webhook",
-                    "webhookByEvents": False,
-                    "events": ["MESSAGES_UPSERT"]
+                    "webhook": {
+                        "enabled": True,
+                        "url": f"http://host.docker.internal:8001/api/whatsapp/evolution/webhook",
+                        "webhookByEvents": False,
+                        "events": ["MESSAGES_UPSERT"]
+                    }
                 }
                 await client.post(f"{evo_url}/webhook/set/{instance_name}", json=wh_payload, headers=headers)
                 
@@ -1231,6 +1233,16 @@ async def whatsapp_qr(country: str):
             # 2. Si ya existe, pedir conectar para obtener el QR
             r2 = await client.get(f"{evo_url}/instance/connect/{instance_name}", headers=headers)
             if r2.status_code == 200:
+                # Set Webhook automatically
+                wh_payload = {
+                    "webhook": {
+                        "enabled": True,
+                        "url": f"http://host.docker.internal:8001/api/whatsapp/evolution/webhook",
+                        "webhookByEvents": False,
+                        "events": ["MESSAGES_UPSERT"]
+                    }
+                }
+                await client.post(f"{evo_url}/webhook/set/{instance_name}", json=wh_payload, headers=headers)
                 data = r2.json()
                 if "base64" in data:
                     return {"qr_data_url": data["base64"]}
