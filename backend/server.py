@@ -3,7 +3,7 @@ server.py — Cobranzas Command Center API
 Backend 100% local: SQLite (aiosqlite) + almacenamiento en disco.
 Sin dependencias de MongoDB, Emergent Object Storage ni emergentintegrations.
 """
-from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Form, Response, Query
+from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Form, Response, Query, Request
 from starlette.middleware.cors import CORSMiddleware
 import os
 import io
@@ -1198,12 +1198,18 @@ async def get_dial_codes():
 
 
 @api_router.get("/whatsapp/qr/{country}")
-async def whatsapp_qr(country: str):
+async def whatsapp_qr(country: str, request: Request):
     country = country.upper()
     evo_url = "http://localhost:8080"
     evo_key = "B6D711FCDE4D4FD59365415B5E45B4C1"
     headers = {"apikey": evo_key, "Content-Type": "application/json"}
     instance_name = f"cobranzas_{country.lower()}"
+    
+    # Infer public URL for the webhook
+    fwd_host = request.headers.get("x-forwarded-host")
+    host = fwd_host or request.headers.get("host") or "host.docker.internal:8001"
+    scheme = "https" if ("cloudflare.com" in host or request.headers.get("x-forwarded-proto") == "https") else "http"
+    public_url = f"{scheme}://{host}"
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         try:
@@ -1219,7 +1225,7 @@ async def whatsapp_qr(country: str):
                 wh_payload = {
                     "webhook": {
                         "enabled": True,
-                        "url": f"http://host.docker.internal:8001/api/whatsapp/evolution/webhook",
+                        "url": f"{public_url}/api/whatsapp/evolution/webhook",
                         "webhookByEvents": False,
                         "events": ["MESSAGES_UPSERT"]
                     }
@@ -1237,7 +1243,7 @@ async def whatsapp_qr(country: str):
                 wh_payload = {
                     "webhook": {
                         "enabled": True,
-                        "url": f"http://host.docker.internal:8001/api/whatsapp/evolution/webhook",
+                        "url": f"{public_url}/api/whatsapp/evolution/webhook",
                         "webhookByEvents": False,
                         "events": ["MESSAGES_UPSERT"]
                     }
